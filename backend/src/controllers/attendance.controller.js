@@ -1,11 +1,23 @@
 const prisma = require("../config/prisma");
-const { evaluateShiftStatus } = require("../utils/shiftEngine");
+const { processDailyAttendanceForPunch } = require("../services/shiftEngineService");
+const { sendPunchToHrms, processSyncQueueBatch } = require("../services/hrmsOutboundService");
+
+const COOLDOWN_SECONDS = 60;
 
 // POST /api/attendance/ingest
 const ingestDetection = async (req, res) => {
   try {
-    const { companyId } = req.user;
-    const { employeeId, cameraId, confidenceScore, snapshotUrl, timestamp } = req.body;
+    const { employeeId, cameraId, punchTimestamp, confidenceScore, snapshotUrl } = req.body;
+    
+    // Safely extract companyId from whatever property the middleware sets
+    const companyId = req.companyId || req.user?.companyId || req.admin?.companyId;
+
+    if (!companyId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: Company ID missing from auth session",
+      });
+    }
 
     if (!employeeId || !cameraId) {
       return res.status(400).json({
@@ -14,177 +26,144 @@ const ingestDetection = async (req, res) => {
       });
     }
 
-    // 1. Verify Employee & Camera belong to tenant
-    const employee = await prisma.employee.findFirst({
-      where: { id: employeeId, companyId },
-      include: { shiftSnapshot: true },
-    });
-    if (!employee) {
-      return res.status(404).json({ success: false, message: "Employee not found in this company" });
-    }
+    const currentPunchTime = punchTimestamp ? new Date(punchTimestamp) : new Date();
+    const cooldownThreshold = new Date(currentPunchTime.getTime() - COOLDOWN_SECONDS * 1000);
 
-    const camera = await prisma.camera.findFirst({
-      where: { id: cameraId, companyId },
-    });
-    if (!camera) {
-      return res.status(404).json({ success: false, message: "Camera not found in this company" });
-    }
-
-    const punchTime = timestamp ? new Date(timestamp) : new Date();
-
-    // 2. 60-second cooldown de-duplication
-    const cooldownWindow = new Date(punchTime.getTime() - 60 * 1000);
-    const recentPunch = await prisma.attendanceRawLog.findFirst({
+    // 1. Check 60-Second Cooldown
+    const recentLog = await prisma.attendanceRawLog.findFirst({
       where: {
         companyId,
         employeeId,
-        punchTimestamp: { gte: cooldownWindow },
+        punchTimestamp: { gte: cooldownThreshold, lte: currentPunchTime },
       },
+      orderBy: { punchTimestamp: "desc" },
     });
 
-    if (recentPunch) {
+    if (recentLog) {
       return res.status(200).json({
         success: true,
-        message: "Punch ignored: duplicate detection within 60s cooldown window",
         deduplicated: true,
-        existingLogId: recentPunch.id,
+        message: `Detection dropped: Cooldown active (within ${COOLDOWN_SECONDS}s window)`,
+        data: recentLog,
       });
     }
 
-    // 3. Save Raw Log
+    // 2. Fetch Employee with Company details
+    const employee = await prisma.employee.findFirst({
+      where: { id: employeeId, companyId },
+      include: { company: true },
+    });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found in company scope",
+      });
+    }
+
+    // 3. Save Raw Attendance Log
     const rawLog = await prisma.attendanceRawLog.create({
       data: {
         companyId,
         employeeId,
         cameraId,
-        punchTimestamp: punchTime,
-        confidenceScore: confidenceScore !== undefined ? parseFloat(confidenceScore) : 0.95,
+        punchTimestamp: currentPunchTime,
+        confidenceScore: confidenceScore || 0.0,
         snapshotUrl: snapshotUrl || null,
         syncStatus: "PENDING",
       },
-      include: {
-        employee: { select: { name: true, employeeCode: true, designation: true } },
-        camera: { select: { name: true, location: true } },
-      },
     });
 
-    // 4. Module 5 Shift Engine: Update DailyAttendance Record
-    const attendanceDate = new Date(punchTime);
-    attendanceDate.setHours(0, 0, 0, 0);
+    // 4. Trigger Module 5 Shift Engine
+    const dailySummary = await processDailyAttendanceForPunch(
+      companyId,
+      employeeId,
+      currentPunchTime
+    );
 
-    const existingDaily = await prisma.dailyAttendance.findUnique({
-      where: {
-        companyId_employeeId_attendanceDate: {
-          companyId,
-          employeeId,
-          attendanceDate,
-        },
-      },
-    });
+    // 5. Module 6: Create Outbound HRMS Sync Queue Task
+    const hrmsPayload = {
+      hrmsCompanyId: employee.company.hrmsCompanyId,
+      hrmsEmployeeId: employee.hrmsEmployeeId,
+      employeeCode: employee.employeeCode,
+      punchDateTime: currentPunchTime.toISOString(),
+      rawLogId: rawLog.id,
+      cameraId: cameraId,
+    };
 
-    let firstIn = existingDaily?.firstIn || punchTime;
-    let lastOut = existingDaily ? punchTime : null;
-
-    if (existingDaily && punchTime < existingDaily.firstIn) {
-      firstIn = punchTime;
-    }
-
-    const evaluation = evaluateShiftStatus(firstIn, lastOut, employee.shiftSnapshot);
-
-    const dailyRecord = await prisma.dailyAttendance.upsert({
-      where: {
-        companyId_employeeId_attendanceDate: {
-          companyId,
-          employeeId,
-          attendanceDate,
-        },
-      },
-      update: {
-        firstIn,
-        lastOut,
-        totalWorkMinutes: evaluation.totalWorkMinutes,
-        status: evaluation.status,
-        lateByMinutes: evaluation.lateByMinutes,
-      },
-      create: {
+    const queueItem = await prisma.hrmsSyncQueue.create({
+      data: {
         companyId,
-        employeeId,
-        attendanceDate,
-        firstIn,
-        lastOut,
-        totalWorkMinutes: evaluation.totalWorkMinutes,
-        status: evaluation.status,
-        lateByMinutes: evaluation.lateByMinutes,
+        rawLogId: rawLog.id,
+        payload: hrmsPayload,
+        status: "PENDING",
       },
     });
 
     return res.status(201).json({
       success: true,
-      message: "Attendance punch logged and shift processed successfully",
       deduplicated: false,
+      message: "Attendance punch recorded & enqueued for HRMS sync",
       data: {
         rawLog,
-        dailyAttendance: dailyRecord,
+        dailySummary,
+        queueId: queueItem.id,
       },
     });
   } catch (error) {
-    console.error("Ingest detection error:", error);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    console.error("Ingest Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error during detection ingestion",
+      error: error.message,
+    });
   }
 };
 
 // GET /api/attendance/logs
 const getAttendanceLogs = async (req, res) => {
   try {
-    const { companyId } = req.user;
-    const { employeeId, date, limit = 50 } = req.query;
+    const companyId = req.companyId || req.user?.companyId || req.admin?.companyId;
+    const { employeeId, date } = req.query;
 
-    let filter = { companyId };
-    if (employeeId) filter.employeeId = employeeId;
-
+    const whereClause = { companyId };
+    if (employeeId) whereClause.employeeId = employeeId;
     if (date) {
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
-      filter.punchTimestamp = { gte: startOfDay, lte: endOfDay };
+      const startOfDay = new Date(`${date}T00:00:00.000Z`);
+      const endOfDay = new Date(`${date}T23:59:59.999Z`);
+      whereClause.punchTimestamp = { gte: startOfDay, lte: endOfDay };
     }
 
     const logs = await prisma.attendanceRawLog.findMany({
-      where: filter,
+      where: whereClause,
       include: {
         employee: { select: { name: true, employeeCode: true, designation: true } },
         camera: { select: { name: true, location: true } },
       },
       orderBy: { punchTimestamp: "desc" },
-      take: Number(limit),
+      take: 50,
     });
 
-    return res.status(200).json({
-      success: true,
-      count: logs.length,
-      data: logs,
-    });
+    return res.status(200).json({ success: true, count: logs.length, data: logs });
   } catch (error) {
-    console.error("Get attendance logs error:", error);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // GET /api/attendance/daily-summary
 const getDailySummary = async (req, res) => {
   try {
-    const { companyId } = req.user;
-    const { date } = req.query;
+    const companyId = req.companyId || req.user?.companyId || req.admin?.companyId;
+    const { date, employeeId } = req.query;
 
     const targetDate = date ? new Date(date) : new Date();
-    targetDate.setHours(0, 0, 0, 0);
+    targetDate.setUTCHours(0, 0, 0, 0);
 
-    const summaries = await prisma.dailyAttendance.findMany({
-      where: {
-        companyId,
-        attendanceDate: targetDate,
-      },
+    const whereClause = { companyId, attendanceDate: targetDate };
+    if (employeeId) whereClause.employeeId = employeeId;
+
+    const summary = await prisma.dailyAttendance.findMany({
+      where: whereClause,
       include: {
         employee: {
           select: {
@@ -196,18 +175,63 @@ const getDailySummary = async (req, res) => {
           },
         },
       },
-      orderBy: { firstIn: "asc" },
+      orderBy: { createdAt: "desc" },
     });
 
     return res.status(200).json({
       success: true,
-      count: summaries.length,
+      count: summary.length,
       attendanceDate: targetDate,
-      data: summaries,
+      data: summary,
     });
   } catch (error) {
-    console.error("Get daily summary error:", error);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET /api/attendance/sync-queue
+const getSyncQueue = async (req, res) => {
+  try {
+    const companyId = req.companyId || req.user?.companyId || req.admin?.companyId;
+    const { status } = req.query;
+
+    const whereClause = { companyId };
+    if (status) whereClause.status = status;
+
+    const queue = await prisma.hrmsSyncQueue.findMany({
+      where: whereClause,
+      include: {
+        rawLog: {
+          include: { employee: true, camera: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: queue.length,
+      data: queue,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// POST /api/attendance/sync-retry
+const triggerSyncWorker = async (req, res) => {
+  try {
+    const results = await processSyncQueueBatch(20);
+
+    return res.status(200).json({
+      success: true,
+      message: "Sync worker executed successfully",
+      processedCount: results.length,
+      results,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -215,4 +239,6 @@ module.exports = {
   ingestDetection,
   getAttendanceLogs,
   getDailySummary,
+  getSyncQueue,
+  triggerSyncWorker,
 };
