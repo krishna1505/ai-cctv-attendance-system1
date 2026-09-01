@@ -8,6 +8,7 @@ const {
   updateCamera,
   deleteCamera,
   pingCamera,
+  testCameraConnection,
 } = require("../controllers/camera.controller");
 
 router.get("/cameras", verifyToken, getCameras);
@@ -16,5 +17,6 @@ router.post("/cameras", verifyToken, addCamera);
 router.put("/cameras/:id", verifyToken, updateCamera);
 router.delete("/cameras/:id", verifyToken, deleteCamera);
 router.post("/cameras/:id/ping", verifyToken, pingCamera);
+router.post("/cameras/:id/test", verifyToken, testCameraConnection);
 
 module.exports = router;

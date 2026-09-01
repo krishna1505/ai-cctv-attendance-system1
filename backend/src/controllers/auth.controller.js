@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const prisma = require("../config/prisma");
 
+// POST /api/auth/login
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -22,6 +23,13 @@ const login = async (req, res) => {
       return res.status(401).json({
         success: false,
         message: "Invalid credentials or inactive account",
+      });
+    }
+
+    if (admin.company && admin.company.status !== "ACTIVE") {
+      return res.status(403).json({
+        success: false,
+        message: "Company account is inactive",
       });
     }
 
@@ -49,6 +57,17 @@ const login = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
     );
 
+    // Module 1 Security: Record AuditLog for Successful Login
+    await prisma.auditLog.create({
+      data: {
+        companyId: admin.companyId,
+        action: "USER_LOGIN_SUCCESS",
+        performedBy: admin.email,
+        details: { role: admin.role },
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      },
+    });
+
     return res.status(200).json({
       success: true,
       message: "Login successful",
@@ -59,7 +78,7 @@ const login = async (req, res) => {
           email: admin.email,
           role: admin.role,
           companyId: admin.companyId,
-          companyName: admin.company.name,
+          companyName: admin.company?.name || null,
         },
       },
     });
@@ -72,11 +91,55 @@ const login = async (req, res) => {
   }
 };
 
+// POST /api/auth/logout (Real Server-Side Blacklist Invalidation & AuditLog)
 const logout = async (req, res) => {
-  return res.status(200).json({
-    success: true,
-    message: "Logout successful",
-  });
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      const decoded = jwt.decode(token);
+
+      // Extract expiry or fallback to 24h
+      const expiresAt = decoded?.exp
+        ? new Date(decoded.exp * 1000)
+        : new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      // Save token to blacklist table
+      await prisma.tokenBlacklist.upsert({
+        where: { token },
+        update: {},
+        create: {
+          token,
+          expiresAt,
+        },
+      });
+
+      // Module 1 Security: Record AuditLog for Logout Event
+      if (decoded?.companyId) {
+        await prisma.auditLog.create({
+          data: {
+            companyId: decoded.companyId,
+            action: "USER_LOGOUT",
+            performedBy: decoded.email || "ADMIN",
+            details: { tokenRevoked: true },
+            ipAddress: req.ip || req.connection?.remoteAddress,
+          },
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Admin logged out successfully. Server session invalidated.",
+    });
+  } catch (error) {
+    console.error("Logout error:", error);
+    return res.status(200).json({
+      success: true,
+      message: "Logged out",
+    });
+  }
 };
 
 module.exports = { login, logout };
