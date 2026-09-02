@@ -1,5 +1,6 @@
 datasource db {
   provider = "postgresql"
+
 }
 
 generator client {
@@ -59,57 +60,70 @@ enum AttendanceEventType {
   HEARTBEAT_SEEN
 }
 
+enum AIEventType {
+  FACE_DETECTED
+  FACE_RECOGNIZED
+  CHECK_IN
+  CHECK_OUT
+  UNKNOWN_PERSON
+  ZONE_ENTER
+  ZONE_EXIT
+  CAMERA_ONLINE
+  CAMERA_OFFLINE
+}
+
 // ==========================================
-// 1. Company & Admin Models (Mod 1)
+// 1. Company & Admin Models (Mod 1 & 11)
 // ==========================================
 model Company {
-  id                  String                   @id @default(uuid())
-  name                String
-  code                String                   @unique
-  timezone            String                   @default("Asia/Kolkata")
-  address             String?
-  status              Status                   @default(ACTIVE)
-  confidenceThreshold Float                    @default(0.85) @map("confidence_threshold")
-  hrmsBaseUrl         String?                  @map("hrms_base_url")
-  hrmsDeviceKey       String?                  @map("hrms_device_key")
-  hrmsCompanyId       String?                  @map("hrms_company_id")
-  createdAt           DateTime                 @default(now()) @map("created_at")
+  id                   String                  @id @default(uuid())
+  name                 String
+  code                 String                  @unique
+  timezone             String                  @default("Asia/Kolkata")
+  address              String?
+  status               Status                  @default(ACTIVE)
+  confidenceThreshold  Float                   @default(0.85) @map("confidence_threshold")
+  eventRetentionDays   Int                     @default(15) @map("event_retention_days")
+  createdAt            DateTime                @default(now()) @map("created_at")
 
-  adminUsers          AdminUser[]
-  departments         Department[]
-  employees           Employee[]
-  shiftSnapshots      ShiftSnapshot[]
-  cameras             Camera[]
-  zones               Zone[]
-  rawLogs             AttendanceRawLog[]
-  dailyAttendance     DailyAttendance[]
-  syncQueues          HrmsSyncQueue[]
-  presenceSessions    PresenceSession[]
-  dailyAnalytics      EmployeeDailyAnalytics[]
-  attendanceEvents    AttendanceEvent[]
-  auditLogs           AuditLog[]
-  syncLogs            SyncLog[]
+  adminUsers           AdminUser[]
+  departments          Department[]
+  employees            Employee[]
+  shiftSnapshots       ShiftSnapshot[]
+  cameras              Camera[]
+  zones                Zone[]
+  rawLogs              AttendanceRawLog[]
+  dailyAttendance      DailyAttendance[]
+  syncQueues           HrmsSyncQueue[]
+  presenceSessions     PresenceSession[]
+  dailyAnalytics       EmployeeDailyAnalytics[]
+  attendanceEvents     AttendanceEvent[]
+  auditLogs            AuditLog[]
+  syncLogs             SyncLog[]
+  aiEvents             AIEvent[]
+  hrmsIntegration      HRMSIntegration?
 
   @@map("companies")
 }
 
 model AdminUser {
-  id           String    @id @default(uuid())
-  companyId    String    @map("company_id")
-  email        String    @unique
-  passwordHash String    @map("password_hash")
-  role         Role      @default(COMPANY_ADMIN)
-  status       Status    @default(ACTIVE)
-  lastLogin    DateTime? @map("last_login")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id           String     @id @default(uuid())
+  companyId    String     @map("company_id")
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  role         Role       @default(COMPANY_ADMIN)
+  status       Status     @default(ACTIVE)
+  lastLogin    DateTime?  @map("last_login")
+  createdAt    DateTime   @default(now()) @map("created_at")
 
-  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  auditLogs    AuditLog[]
 
   @@map("admin_users")
 }
 
 // ==========================================
-// 1b. Token Blacklist for Real Server-side Logout (Mod 1)
+// 1b. Token Blacklist for Real Server-side Logout
 // ==========================================
 model TokenBlacklist {
   id        String   @id @default(uuid())
@@ -122,7 +136,7 @@ model TokenBlacklist {
 }
 
 // ==========================================
-// 2. Department, Shift & Employee (Mod 2)
+// 2. Department, Shift & Employee (Mod 2 & 11)
 // ==========================================
 model Department {
   id               String     @id @default(uuid())
@@ -157,34 +171,53 @@ model ShiftSnapshot {
 }
 
 model Employee {
-  id               String                   @id @default(uuid())
-  companyId        String                   @map("company_id")
-  hrmsEmployeeId   String                   @map("hrms_employee_id")
-  employeeCode     String                   @map("employee_code")
-  name             String
-  departmentId     String?                  @map("department_id")
-  shiftSnapshotId  String?                  @map("shift_snapshot_id")
-  designation      String?
-  faceProfileRef   String?                  @map("face_profile_ref")
-  status           Status                   @default(ACTIVE)
-  lastSyncedAt     DateTime?                @map("last_synced_at")
-  createdAt        DateTime                 @default(now()) @map("created_at")
+  id                   String                 @id @default(uuid())
+  companyId            String                 @map("company_id")
+  hrmsEmployeeId       String                 @map("hrms_employee_id")
+  employeeCode         String                 @map("employee_code")
+  name                 String
+  departmentId         String?                @map("department_id")
+  shiftSnapshotId      String?                @map("shift_snapshot_id")
+  designation          String?
+  faceProfileRef       String?                @map("face_profile_ref")
+  status               Status                 @default(ACTIVE)
+  lastSyncedAt         DateTime?              @map("last_synced_at")
+  createdAt            DateTime               @default(now()) @map("created_at")
 
-  company          Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  department       Department?              @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  shiftSnapshot    ShiftSnapshot?           @relation(fields: [shiftSnapshotId], references: [id], onDelete: SetNull)
-  rawLogs          AttendanceRawLog[]
-  dailyAttendance  DailyAttendance[]
-  presenceSessions PresenceSession[]
-  zoneSessions     ZoneSession[]
-  breakSessions    BreakSession[]
-  meetingSessions  MeetingSession[]
-  dailyAnalytics   EmployeeDailyAnalytics[]
-  attendanceEvents AttendanceEvent[]
+  company              Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  department           Department?            @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  shiftSnapshot        ShiftSnapshot?         @relation(fields: [shiftSnapshotId], references: [id], onDelete: SetNull)
+  faceProfileReference FaceProfileReference?
+  rawLogs              AttendanceRawLog[]
+  dailyAttendance      DailyAttendance[]
+  presenceSessions     PresenceSession[]
+  zoneSessions         ZoneSession[]
+  breakSessions        BreakSession[]
+  meetingSessions      MeetingSession[]
+  dailyAnalytics       EmployeeDailyAnalytics[]
+  attendanceEvents     AttendanceEvent[]
+  aiEvents             AIEvent[]
 
   @@unique([companyId, hrmsEmployeeId])
   @@unique([companyId, employeeCode])
   @@map("employees")
+}
+
+// ==========================================
+// 2b. Face Profile Reference (Mod 5 & 11)
+// ==========================================
+model FaceProfileReference {
+  id                String    @id @default(uuid())
+  employeeId        String    @unique @map("employee_id")
+  hrmsFaceProfileId String?   @map("hrms_face_profile_id")
+  embeddingRef      String?   @map("embedding_ref")
+  status            Status    @default(ACTIVE)
+  syncedAt          DateTime? @default(now()) @map("synced_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("face_profile_references")
 }
 
 // ==========================================
@@ -210,20 +243,21 @@ model Zone {
 }
 
 model Camera {
-  id                   String            @id @default(uuid())
-  companyId            String            @map("company_id")
+  id                   String             @id @default(uuid())
+  companyId            String             @map("company_id")
   name                 String
   location             String?
-  rtspUrl              String            @map("rtsp_url")
-  credentialsEncrypted String?           @map("credentials_encrypted")
-  status               CameraStatus      @default(ACTIVE)
-  lastPingAt           DateTime?         @map("last_ping_at")
-  createdAt            DateTime          @default(now()) @map("created_at")
+  rtspUrl              String             @map("rtsp_url")
+  credentialsEncrypted String?            @map("credentials_encrypted")
+  status               CameraStatus       @default(ACTIVE)
+  lastPingAt           DateTime?          @map("last_ping_at")
+  createdAt            DateTime           @default(now()) @map("created_at")
 
-  company              Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company              Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   cameraZones          CameraZone[]
   rawLogs              AttendanceRawLog[]
   attendanceEvents     AttendanceEvent[]
+  aiEvents             AIEvent[]
 
   @@map("cameras")
 }
@@ -245,19 +279,19 @@ model CameraZone {
 // 4. Raw Logs & Daily Attendance (Mod 5 & 6)
 // ==========================================
 model AttendanceRawLog {
-  id              String            @id @default(uuid())
-  companyId       String            @map("company_id")
-  employeeId      String            @map("employee_id")
-  cameraId        String            @map("camera_id")
-  punchTimestamp  DateTime          @default(now()) @map("punch_timestamp")
-  confidenceScore Float?            @map("confidence_score")
-  snapshotUrl     String?           @map("snapshot_url")
-  syncStatus      SyncStatus        @default(PENDING) @map("sync_status")
-  createdAt       DateTime          @default(now()) @map("created_at")
+  id              String          @id @default(uuid())
+  companyId       String          @map("company_id")
+  employeeId      String          @map("employee_id")
+  cameraId        String          @map("camera_id")
+  punchTimestamp  DateTime        @default(now()) @map("punch_timestamp")
+  confidenceScore Float?          @map("confidence_score")
+  snapshotUrl     String?         @map("snapshot_url")
+  syncStatus      SyncStatus      @default(PENDING) @map("sync_status")
+  createdAt       DateTime        @default(now()) @map("created_at")
 
-  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee        Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  camera          Camera            @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee        Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  camera          Camera          @relation(fields: [cameraId], references: [id], onDelete: Cascade)
   syncQueues      HrmsSyncQueue[]
 
   @@index([companyId, punchTimestamp])
@@ -418,34 +452,82 @@ model EmployeeDailyAnalytics {
 }
 
 // ==========================================
-// 6. Audit & Sync Logs
+// 6. Audit & Dedicated Module 10 Models (Mod 10 & 11)
 // ==========================================
-model AuditLog {
-  id          String   @id @default(uuid())
-  companyId   String   @map("company_id")
-  action      String
-  performedBy String   @map("performed_by")
-  details     Json?
-  ipAddress   String?  @map("ip_address")
-  createdAt   DateTime @default(now()) @map("created_at")
 
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+model AuditLog {
+  id          String     @id @default(uuid())
+  companyId   String     @map("company_id")
+  adminUserId String?    @map("admin_user_id")
+  action      String     @default("SYSTEM_ACTION")
+  entityType  String     @default("SYSTEM") @map("entity_type")
+  entityId    String?    @map("entity_id")
+  ipAddress   String?    @map("ip_address")
+  details     Json?
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  adminUser   AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
 
   @@index([companyId, createdAt])
   @@map("audit_logs")
 }
 
+model HRMSIntegration {
+  id                 String    @id @default(uuid())
+  companyId          String    @unique @map("company_id")
+  baseUrl            String    @map("base_url")
+  deviceKeyEncrypted String    @map("device_key_encrypted")
+  lastHealthCheck    DateTime? @map("last_health_check")
+  status             String    @default("ACTIVE")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  company            Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  syncLogs           SyncLog[]
+
+  @@map("hrms_integrations")
+}
+
 model SyncLog {
-  id            String     @id @default(uuid())
-  companyId     String     @map("company_id")
-  syncType      String
-  status        SyncStatus @default(PENDING)
-  recordsSynced Int        @default(0) @map("records_synced")
-  errorMessage  String?    @map("error_message")
-  executedAt    DateTime   @default(now()) @map("executed_at")
+  id            String           @id @default(uuid())
+  companyId     String           @map("company_id")
+  integrationId String?          @map("integration_id")
+  syncType      String           @default("EMPLOYEES") @map("sync_type")
+  status        SyncStatus       @default(PENDING)
+  recordsSynced Int              @default(0) @map("records_synced")
+  errorMessage  String?          @map("error_message")
+  createdAt     DateTime         @default(now()) @map("created_at")
 
-  company       Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company       Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  integration   HRMSIntegration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
 
-  @@index([companyId, executedAt])
+  @@index([companyId, createdAt])
   @@map("sync_logs")
+}
+
+// ==========================================
+// 7. Generic AI Event Pipeline (Mod 9 & 11)
+// ==========================================
+model AIEvent {
+  id              String      @id @default(uuid())
+  companyId       String      @map("company_id")
+  cameraId        String?     @map("camera_id")
+  employeeId      String?     @map("employee_id")
+  eventType       AIEventType @map("event_type")
+  confidenceScore Float?      @map("confidence_score")
+  zoneType        ZoneType?   @map("zone_type")
+  metadata        Json?
+  snapshotUrl     String?     @map("snapshot_url")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  company         Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  camera          Camera?     @relation(fields: [cameraId], references: [id], onDelete: SetNull)
+  employee        Employee?   @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, eventType])
+  @@index([employeeId, createdAt])
+  @@map("ai_events")
 }

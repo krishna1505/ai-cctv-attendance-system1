@@ -11,12 +11,13 @@ const {
   getEmployeeFullTimeline,
 } = require("../controllers/analytics.controller");
 
-router.get("/analytics/kpi-summary", verifyToken, getKpiSummary);
-router.get("/analytics/hourly-trend", verifyToken, getHourlyTrend);
-router.get("/analytics/department-stats", verifyToken, getDepartmentStats);
-router.get("/analytics/company", verifyToken, getCompanyDashboardAnalytics);
-router.get("/analytics/employees/:id", verifyToken, getEmployeeAnalytics);
-router.get("/analytics/employees/:id/timeline", verifyToken, getEmployeeFullTimeline);
-router.get("/analytics/departments/:id", verifyToken, getDepartmentAnalytics);
+// Base path already "/api/analytics" hai app.js me
+router.get("/kpi-summary", verifyToken, getKpiSummary);
+router.get("/hourly-trend", verifyToken, getHourlyTrend);
+router.get("/department-stats", verifyToken, getDepartmentStats);
+router.get("/company", verifyToken, getCompanyDashboardAnalytics);
+router.get("/employees/:id", verifyToken, getEmployeeAnalytics);
+router.get("/employees/:id/timeline", verifyToken, getEmployeeFullTimeline);
+router.get("/departments/:id", verifyToken, getDepartmentAnalytics);
 
 module.exports = router;

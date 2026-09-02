@@ -8,9 +8,10 @@ const {
   syncEmployeesFromHRMS,
 } = require("../controllers/employee.controller");
 
-router.get("/employees", verifyToken, getEmployees);
-router.get("/employees/:id", verifyToken, getEmployeeById);
-router.post("/employees/sync", verifyToken, syncEmployeesFromHRMS);
+// Base path already "/api/employees" hai app.js me
+router.get("/", verifyToken, getEmployees);
 router.get("/departments", verifyToken, getDepartments);
+router.post("/sync", verifyToken, syncEmployeesFromHRMS);
+router.get("/:id", verifyToken, getEmployeeById);
 
 module.exports = router;

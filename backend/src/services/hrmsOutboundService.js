@@ -1,52 +1,127 @@
 const prisma = require("../config/prisma");
-const axios = require("axios");
-const { decrypt } = require("../utils/crypto.util");
+const { sendDevicePunch } = require("./staffpieIntegrationService");
 
 /**
- * Pushes raw attendance punch payload to external HRMS with decrypted credentials.
- * If external HRMS endpoint is not configured, simulates a mock sync.
+ * 1. Pushes attendance punch to StaffPie with immediate audit & retry handling
+ * Direct AttendanceEvent pipeline (Module 10 Core)
  */
-async function sendPunchToHrms(company, payload) {
-  if (company.hrmsBaseUrl && company.hrmsBaseUrl.startsWith("http")) {
-    const plainDeviceKey = decrypt(company.hrmsDeviceKey) || company.hrmsDeviceKey || "";
-    const plainCompanyId = decrypt(company.hrmsCompanyId) || company.hrmsCompanyId || company.id;
+const pushAttendancePunch = async (attendanceEventId) => {
+  const event = await prisma.attendanceEvent.findUnique({
+    where: { id: attendanceEventId },
+    include: {
+      employee: true,
+      company: true,
+      camera: true,
+    },
+  });
 
-    // Standardize URL path to /api/v1/attendance/device/punch or fallback
-    const baseUrl = company.hrmsBaseUrl.replace(/\/+$/, "");
-    const targetUrl = baseUrl.includes("/attendance") 
-      ? baseUrl 
-      : `${baseUrl}/api/v1/attendance/device/punch`;
-
-    const response = await axios.post(
-      targetUrl,
-      payload,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "X-Device-Key": plainDeviceKey,
-          "X-Company-ID": plainCompanyId,
-        },
-        timeout: 8000,
-      }
-    );
-    return response.data;
+  if (!event || !event.employee) {
+    throw new Error(`AttendanceEvent with ID ${attendanceEventId} or associated employee not found`);
   }
 
-  // Mock HRMS success response for local dev testing
-  return {
-    success: true,
-    message: "Punch synced successfully with HRMS (Mock Engine)",
-    syncedAt: new Date().toISOString(),
-  };
-}
+  // Determine Target Employee ID (Prioritize StaffPie Mongo ID, fallback to Employee code)
+  const targetEmployeeId = event.employee.hrmsEmployeeId || event.employee.employeeCode;
+
+  try {
+    // Dispatch punch to StaffPie using dedicated integration bridge
+    await sendDevicePunch({
+      companyId: event.companyId,
+      employeeId: targetEmployeeId,
+      deviceId: event.camera?.name || event.cameraId || "CCTV_AI_ENGINE",
+      punchTimestamp: event.eventTimestamp,
+    });
+
+    // Mark AttendanceEvent as SYNCED
+    await prisma.attendanceEvent.update({
+      where: { id: event.id },
+      data: {
+        hrmsSyncStatus: "SYNCED",
+        lastSyncError: null,
+      },
+    });
+
+    // Write Success Audit Record to SyncLog
+    await prisma.syncLog.create({
+      data: {
+        companyId: event.companyId,
+        syncType: "PUNCH_OUTBOUND",
+        status: "SYNCED",
+        recordsSynced: 1,
+        errorMessage: null,
+      },
+    });
+
+    return { success: true, eventId: event.id, status: "SYNCED" };
+  } catch (error) {
+    const nextRetryCount = event.retryCount + 1;
+    const isExhausted = nextRetryCount >= 5;
+    const errorMessage = error.response?.data?.message || error.message || "Outbound punch failed";
+
+    // Update AttendanceEvent with failure & increment retry count
+    await prisma.attendanceEvent.update({
+      where: { id: event.id },
+      data: {
+        hrmsSyncStatus: "FAILED",
+        retryCount: nextRetryCount,
+        lastSyncError: errorMessage,
+      },
+    });
+
+    // Write Failure Audit Record to SyncLog
+    await prisma.syncLog.create({
+      data: {
+        companyId: event.companyId,
+        syncType: "PUNCH_OUTBOUND",
+        status: "FAILED",
+        recordsSynced: 0,
+        errorMessage,
+      },
+    });
+
+    return {
+      success: false,
+      eventId: event.id,
+      status: isExhausted ? "PERMANENTLY_FAILED" : "RETRY_SCHEDULED",
+      retryCount: nextRetryCount,
+      error: errorMessage,
+    };
+  }
+};
 
 /**
- * Worker function: Processes pending sync items using Exponential Backoff & SyncLog audit
+ * 2. Worker: Retries all failed attendance events using Exponential Backoff (2^retryCount * 60s)
  */
-async function processSyncQueueBatch(batchSize = 20) {
+const retryFailedPunchesWorker = async (batchSize = 25) => {
+  const failedEvents = await prisma.attendanceEvent.findMany({
+    where: {
+      hrmsSyncStatus: "FAILED",
+      retryCount: { lt: 5 },
+    },
+    take: batchSize,
+    orderBy: { eventTimestamp: "asc" },
+  });
+
+  const results = [];
+  for (const event of failedEvents) {
+    // Delay calculation: 2^retryCount minutes
+    const backoffMs = Math.pow(2, event.retryCount) * 60 * 1000;
+    const lastAttemptTime = new Date(event.createdAt).getTime();
+
+    if (Date.now() - lastAttemptTime >= backoffMs) {
+      const res = await pushAttendancePunch(event.id);
+      results.push(res);
+    }
+  }
+
+  return results;
+};
+
+/**
+ * 3. Legacy Queue Worker Bridge (Handles HrmsSyncQueue table if populated)
+ */
+const processSyncQueueBatch = async (batchSize = 20) => {
   const now = new Date();
 
-  // 1. Fetch pending/retryable items that have not exceeded maxAttempts
   const queueItems = await prisma.hrmsSyncQueue.findMany({
     where: {
       status: { in: ["PENDING", "FAILED"] },
@@ -55,7 +130,9 @@ async function processSyncQueueBatch(batchSize = 20) {
     },
     include: {
       company: true,
-      rawLog: true,
+      rawLog: {
+        include: { employee: true },
+      },
     },
     take: batchSize,
     orderBy: { createdAt: "asc" },
@@ -65,16 +142,20 @@ async function processSyncQueueBatch(batchSize = 20) {
 
   for (const item of queueItems) {
     try {
-      // Mark as PROCESSING
       await prisma.hrmsSyncQueue.update({
         where: { id: item.id },
         data: { status: "PROCESSING" },
       });
 
-      // Attempt push to external HRMS
-      await sendPunchToHrms(item.company, item.payload);
+      const empId = item.rawLog?.employee?.hrmsEmployeeId || item.payload?.employeeId;
 
-      // On Success: Update Queue, RawLog and write SyncLog audit
+      await sendDevicePunch({
+        companyId: item.companyId,
+        employeeId: empId,
+        deviceId: item.payload?.deviceId || "CCTV_AI_ENGINE",
+        punchTimestamp: item.rawLog?.punchTimestamp || item.payload?.timestamp,
+      });
+
       await prisma.hrmsSyncQueue.update({
         where: { id: item.id },
         data: {
@@ -84,12 +165,13 @@ async function processSyncQueueBatch(batchSize = 20) {
         },
       });
 
-      await prisma.attendanceRawLog.update({
-        where: { id: item.rawLogId },
-        data: { syncStatus: "SYNCED" },
-      });
+      if (item.rawLogId) {
+        await prisma.attendanceRawLog.update({
+          where: { id: item.rawLogId },
+          data: { syncStatus: "SYNCED" },
+        });
+      }
 
-      // Module 7 SyncLog audit
       await prisma.syncLog.create({
         data: {
           companyId: item.companyId,
@@ -104,36 +186,34 @@ async function processSyncQueueBatch(batchSize = 20) {
     } catch (error) {
       const nextAttempt = item.attempts + 1;
       const isFailedPermanently = nextAttempt >= item.maxAttempts;
-
-      // Exponential Backoff calculation: 2^attempt * 30 seconds
-      const delaySeconds = Math.pow(2, nextAttempt) * 30;
+      const delaySeconds = Math.pow(2, nextAttempt) * 60;
       const nextRetry = new Date(Date.now() + delaySeconds * 1000);
+      const errorMessage = error.response?.data?.message || error.message || "Failed to push to HRMS";
 
       await prisma.hrmsSyncQueue.update({
         where: { id: item.id },
         data: {
           attempts: nextAttempt,
           status: isFailedPermanently ? "FAILED" : "PENDING",
-          lastError: error.message || "Failed to push attendance to HRMS",
+          lastError: errorMessage,
           nextRetryAt: nextRetry,
         },
       });
 
-      if (isFailedPermanently) {
+      if (isFailedPermanently && item.rawLogId) {
         await prisma.attendanceRawLog.update({
           where: { id: item.rawLogId },
           data: { syncStatus: "FAILED" },
         });
       }
 
-      // Module 7 SyncLog error audit
       await prisma.syncLog.create({
         data: {
           companyId: item.companyId,
           syncType: "PUNCH_OUTBOUND",
           status: "FAILED",
           recordsSynced: 0,
-          errorMessage: error.message || "Outbound sync failed",
+          errorMessage,
         },
       });
 
@@ -141,15 +221,16 @@ async function processSyncQueueBatch(batchSize = 20) {
         id: item.id,
         status: isFailedPermanently ? "FAILED" : "RETRY_SCHEDULED",
         nextRetryAt: nextRetry,
-        error: error.message,
+        error: errorMessage,
       });
     }
   }
 
   return results;
-}
+};
 
 module.exports = {
-  sendPunchToHrms,
+  pushAttendancePunch,
+  retryFailedPunchesWorker,
   processSyncQueueBatch,
 };

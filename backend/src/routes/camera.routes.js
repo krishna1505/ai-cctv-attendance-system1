@@ -11,12 +11,13 @@ const {
   testCameraConnection,
 } = require("../controllers/camera.controller");
 
-router.get("/cameras", verifyToken, getCameras);
-router.get("/cameras/:id", verifyToken, getCameraById);
-router.post("/cameras", verifyToken, addCamera);
-router.put("/cameras/:id", verifyToken, updateCamera);
-router.delete("/cameras/:id", verifyToken, deleteCamera);
-router.post("/cameras/:id/ping", verifyToken, pingCamera);
-router.post("/cameras/:id/test", verifyToken, testCameraConnection);
+// Base path already "/api/cameras" hai app.js me
+router.get("/", verifyToken, getCameras);
+router.post("/", verifyToken, addCamera);
+router.get("/:id", verifyToken, getCameraById);
+router.put("/:id", verifyToken, updateCamera);
+router.delete("/:id", verifyToken, deleteCamera);
+router.post("/:id/ping", verifyToken, pingCamera);
+router.post("/:id/test", verifyToken, testCameraConnection);
 
 module.exports = router;

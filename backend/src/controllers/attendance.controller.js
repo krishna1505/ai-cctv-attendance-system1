@@ -1,7 +1,9 @@
 const prisma = require("../config/prisma");
+const { getIO } = require("../config/socket");
 const { processDailyAttendanceForPunch } = require("../services/shiftEngineService");
 const { processSyncQueueBatch } = require("../services/hrmsOutboundService");
 const { processPresenceAndZoneSessions } = require("../services/presenceEngineService");
+const { publishAIEvent } = require("../services/eventPublisherService");
 const { shouldProcessPersonDetection } = require("../utils/personTracker.util");
 const { decrypt } = require("../utils/crypto.util");
 
@@ -45,14 +47,34 @@ const ingestDetection = async (req, res) => {
       prisma.company.findUnique({ where: { id: companyId } }),
       prisma.employee.findFirst({
         where: { id: employeeId, companyId },
-        include: { company: true },
+        include: { company: true, department: true },
       }),
     ]);
 
     const requiredThreshold = company?.confidenceThreshold ?? 0.85;
 
+    // Fetch camera zones early for zone-aware telemetry logging
+    const cameraWithZones = await prisma.camera.findUnique({
+      where: { id: cameraId },
+      include: { cameraZones: { include: { zone: true } } },
+    });
+    const zoneType = resolveZonePriority(cameraWithZones?.cameraZones);
+
     // 2. Module 5: Dynamic Confidence Threshold & UNKNOWN_PERSON Classification
     if (confidenceScore < requiredThreshold) {
+      // Save to unified AIEvent table & stream to dashboard
+      await publishAIEvent({
+        companyId,
+        cameraId,
+        eventType: "UNKNOWN_PERSON",
+        confidenceScore,
+        snapshotUrl: snapshotUrl || null,
+        metadata: {
+          threshold: requiredThreshold,
+          reason: `Confidence score (${confidenceScore}) below threshold (${requiredThreshold})`,
+        },
+      });
+
       return res.status(200).json({
         success: true,
         classification: "UNKNOWN_PERSON",
@@ -60,9 +82,21 @@ const ingestDetection = async (req, res) => {
       });
     }
 
-    // 3. Module 5: Person Tracker (Short-lived 10s debounce across frames)
+    // 3. Module 5 & 9: Person Tracker & FACE_DETECTED Raw Event Logging
     const shouldTrack = shouldProcessPersonDetection(companyId, employeeId, 10);
     if (!shouldTrack) {
+      // Asynchronously log high-frequency raw event without blocking response
+      publishAIEvent({
+        companyId,
+        cameraId,
+        employeeId,
+        eventType: "FACE_DETECTED",
+        confidenceScore,
+        zoneType,
+        snapshotUrl: snapshotUrl || null,
+        metadata: { reason: "Frame sequence tracking in-progress (deduplicated)" },
+      }).catch(() => {});
+
       return res.status(200).json({
         success: true,
         deduplicated: true,
@@ -84,6 +118,18 @@ const ingestDetection = async (req, res) => {
     });
 
     if (recentLog) {
+      // Log detection event for analytics telemetry during cooldown
+      publishAIEvent({
+        companyId,
+        cameraId,
+        employeeId,
+        eventType: "FACE_DETECTED",
+        confidenceScore,
+        zoneType,
+        snapshotUrl: snapshotUrl || null,
+        metadata: { reason: `Detection within cooldown (${COOLDOWN_SECONDS}s window)` },
+      }).catch(() => {});
+
       return res.status(200).json({
         success: true,
         deduplicated: true,
@@ -100,14 +146,23 @@ const ingestDetection = async (req, res) => {
       });
     }
 
-    // 6. Deterministic Zone Resolution (Multi-Zone Mapping Handled)
-    const cameraWithZones = await prisma.camera.findUnique({
-      where: { id: cameraId },
-      include: { cameraZones: { include: { zone: true } } },
-    });
-    const zoneType = resolveZonePriority(cameraWithZones?.cameraZones);
+    // 5b. Module 9: Emit Explicit FACE_RECOGNIZED Telemetry (Identity matched & verified)
+    publishAIEvent({
+      companyId,
+      cameraId,
+      employeeId,
+      eventType: "FACE_RECOGNIZED",
+      confidenceScore,
+      zoneType,
+      snapshotUrl: snapshotUrl || null,
+      metadata: {
+        employeeName: employee.name,
+        employeeCode: employee.employeeCode,
+        department: employee.department?.name || null,
+      },
+    }).catch(() => {});
 
-    // 7. Save Raw Attendance Log
+    // 6. Save Raw Attendance Log
     const rawLog = await prisma.attendanceRawLog.create({
       data: {
         companyId,
@@ -120,7 +175,7 @@ const ingestDetection = async (req, res) => {
       },
     });
 
-    // 8. Trigger Shift Engine with real zoneType (Wired Here)
+    // 7. Trigger Shift Engine with real zoneType
     const dailySummary = await processDailyAttendanceForPunch(
       companyId,
       employeeId,
@@ -128,7 +183,7 @@ const ingestDetection = async (req, res) => {
       zoneType
     );
 
-    // 9. Trigger Dynamic Stateful Presence Engine & AttendanceEvent Logger (Module 6 & 7)
+    // 8. Trigger Dynamic Stateful Presence Engine & AttendanceEvent Logger (Module 6 & 7)
     processPresenceAndZoneSessions({
       companyId,
       employeeId,
@@ -138,7 +193,7 @@ const ingestDetection = async (req, res) => {
       snapshotUrl: snapshotUrl || null,
     }).catch((err) => console.error("Async Presence Engine Error:", err));
 
-    // 10. Module 6/7: Create Outbound HRMS Sync Queue Task with Decrypted Company ID
+    // 9. Outbound HRMS Sync Queue Task with Decrypted Company ID
     const plainHrmsCompanyId = decrypt(employee.company.hrmsCompanyId) || employee.company.hrmsCompanyId;
     const hrmsPayload = {
       hrmsCompanyId: plainHrmsCompanyId,
@@ -155,6 +210,24 @@ const ingestDetection = async (req, res) => {
         rawLogId: rawLog.id,
         payload: hrmsPayload,
         status: "PENDING",
+      },
+    });
+
+    // 10. Unified AIEvent Logging & Real-Time Broadcast (CHECK_IN / CHECK_OUT)
+    const eventType = dailySummary && dailySummary.totalWorkMinutes > 0 ? "CHECK_OUT" : "CHECK_IN";
+
+    await publishAIEvent({
+      companyId,
+      cameraId,
+      employeeId,
+      eventType,
+      confidenceScore,
+      zoneType,
+      snapshotUrl: snapshotUrl || null,
+      metadata: {
+        workMinutes: dailySummary?.totalWorkMinutes || 0,
+        status: dailySummary?.status || "PRESENT",
+        dailySummaryId: dailySummary?.id || null,
       },
     });
 

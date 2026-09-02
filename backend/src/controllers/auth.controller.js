@@ -57,20 +57,32 @@ const login = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
     );
 
-    // Module 1 Security: Record AuditLog for Successful Login
+    // Module 1 Security: Record AuditLog for Successful Login (Schema-compliant)
     await prisma.auditLog.create({
       data: {
         companyId: admin.companyId,
+        adminUserId: admin.id,
         action: "USER_LOGIN_SUCCESS",
-        performedBy: admin.email,
-        details: { role: admin.role },
-        ipAddress: req.ip || req.connection?.remoteAddress,
+        entityType: "AUTH",
+        entityId: admin.id,
+        details: { role: admin.role, email: admin.email },
+        ipAddress: req.ip || req.socket?.remoteAddress || "::1",
       },
     });
 
     return res.status(200).json({
       success: true,
       message: "Login successful",
+      token,
+      companyId: admin.companyId,
+      user: {
+        id: admin.id,
+        name: admin.email.split("@")[0],
+        email: admin.email,
+        role: admin.role,
+        companyId: admin.companyId,
+        companyName: admin.company?.name || null,
+      },
       data: {
         token,
         admin: {
@@ -115,15 +127,17 @@ const logout = async (req, res) => {
         },
       });
 
-      // Module 1 Security: Record AuditLog for Logout Event
+      // Module 1 Security: Record AuditLog for Logout Event (Schema-compliant)
       if (decoded?.companyId) {
         await prisma.auditLog.create({
           data: {
             companyId: decoded.companyId,
+            adminUserId: decoded.id || null,
             action: "USER_LOGOUT",
-            performedBy: decoded.email || "ADMIN",
-            details: { tokenRevoked: true },
-            ipAddress: req.ip || req.connection?.remoteAddress,
+            entityType: "AUTH",
+            entityId: decoded.id || null,
+            details: { tokenRevoked: true, email: decoded.email },
+            ipAddress: req.ip || req.socket?.remoteAddress || "::1",
           },
         });
       }
