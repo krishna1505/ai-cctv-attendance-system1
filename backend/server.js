@@ -5,6 +5,15 @@ const { initRedisPubSub } = require("./src/config/redis");
 const { monitorCameraHeartbeats } = require("./src/services/cameraPingService");
 const { purgeOldAIEvents } = require("./src/services/retentionService");
 
+// Outbound HRMS Sync Queue Worker safe import
+let startHrmsSyncWorker = () => {};
+try {
+  const workerModule = require("./src/workers/hrmsSyncWorker");
+  startHrmsSyncWorker = workerModule.startHrmsSyncWorker || (() => {});
+} catch (err) {
+  console.warn("⚠️ HRMS Sync Worker not found or failed to load:", err.message);
+}
+
 const PORT = process.env.PORT || 5000;
 
 const server = http.createServer(app);
@@ -28,4 +37,7 @@ server.listen(PORT, () => {
   console.log(`⚡ Socket.IO listening for real-time events`);
   console.log(`📷 Camera heartbeat monitoring worker started (30s interval)`);
   console.log(`🧹 Configurable retention purge worker registered (24h interval)`);
+
+  // 4. Start Outbound HRMS Queue Worker
+  startHrmsSyncWorker();
 });

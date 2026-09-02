@@ -1,111 +1,382 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { Activity, ShieldAlert, Loader2, RefreshCw } from "lucide-react";
-import { fetchWithAuth } from "@/lib/api";
+import React, { useState, useEffect } from "react";
+import {
+  RefreshCw,
+  Search,
+  Filter,
+  Download,
+  Eye,
+  Play,
+  CheckCircle,
+  BookmarkPlus,
+  ChevronLeft,
+  ChevronRight,
+  ShieldAlert,
+  Users,
+  AlertTriangle,
+  Clock,
+  Calendar,
+  List,
+  LayoutGrid,
+} from "lucide-react";
 
-interface AIEventItem {
-  id: string;
-  event_type: string;
-  employee?: { name: string; employee_code: string };
-  confidence: number;
-  camera: { name: string };
-  timestamp: string;
-}
-
-export default function AIEventsPage() {
-  const [events, setEvents] = useState<AIEventItem[]>([]);
+export default function AiEventsPage() {
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 8;
 
-  const loadEvents = async () => {
-    setLoading(true);
-    const res = await fetchWithAuth<AIEventItem[]>("/api/ai-events");
-    if (res.success && res.data) {
-      setEvents(res.data);
+  const [aiData, setAiData] = useState({
+    metrics: {
+      totalEvents: 142,
+      unauthorizedAccess: 12,
+      peopleCounting: 86,
+      loitering: 8,
+      safetyViolation: 6,
+    },
+    events: [],
+  });
+
+  const getAuthToken = () => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("token") || localStorage.getItem("admin_token") || "";
+  };
+
+  const fetchAiEvents = async () => {
+    try {
+      setLoading(true);
+      const token = getAuthToken();
+      const res = await fetch("http://localhost:5000/api/ai-events/dashboard", {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      const json = await res.json();
+      if (json?.success && json?.data) {
+        setAiData(json.data);
+        if (json.data.events?.length > 0) {
+          setSelectedEvent(json.data.events[0]);
+        }
+      }
+    } catch (err) {
+      console.warn("Using fallback AI events", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
-    loadEvents();
+    fetchAiEvents();
   }, []);
 
+  const allEvents = aiData.events || [];
+  const totalPages = Math.ceil(allEvents.length / rowsPerPage) || 1;
+  const indexOfLastRow = currentPage * rowsPerPage;
+  const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+  const currentRows = allEvents.slice(indexOfFirstRow, indexOfLastRow);
+
   return (
-    <div className="p-8 space-y-7 max-w-[1600px] mx-auto bg-[#F8FAFC]">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="min-h-screen bg-[#F8FAFC] p-6 lg:p-8 text-slate-800">
+      {/* Top Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">AI Detection Events</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Raw edge camera recognitions, tracking triggers & debounce ledger[cite: 5]
-          </p>
+          <span className="text-xs font-semibold tracking-wider text-slate-400 uppercase">AI EVENTS</span>
+          <h1 className="text-2xl font-bold text-slate-900 mt-1">AI Events</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Real-time AI detected events from your cameras</p>
         </div>
-        <button
-          onClick={loadEvents}
-          className="px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 flex items-center gap-2"
-        >
-          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
-        </button>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm font-medium text-slate-700">
+            <Calendar className="w-4 h-4 text-indigo-600" />
+            <span>Mon, 24 Aug 2026</span>
+          </div>
+          <select className="bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm font-medium text-slate-700 focus:outline-none">
+            <option>All zones</option>
+          </select>
+          <select className="bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm font-medium text-slate-700 focus:outline-none">
+            <option>All event types</option>
+          </select>
+          <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors">
+            <Play className="w-4 h-4 fill-current" /> Live View
+          </button>
+          <button onClick={() => alert("Exporting AI Events...")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-800 hover:bg-slate-900 rounded-xl shadow-sm transition-colors">
+            <Download className="w-4 h-4" /> Export
+          </button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-800">Live AI Event Stream</h2>
-          <span className="text-xs text-slate-400 font-medium">Confidence threshold: &ge; 0.85[cite: 5]</span>
+      {/* Top 5 KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">Total Events</div>
+            <div className="text-2xl font-extrabold text-slate-900 mb-1">{aiData.metrics.totalEvents}</div>
+            <div className="text-[11px] text-emerald-600 font-medium">↑ 18% from yesterday</div>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+            <ShieldAlert className="w-4 h-4" />
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-              <tr>
-                <th className="p-4">EVENT ID</th>
-                <th className="p-4">TYPE</th>
-                <th className="p-4">EMPLOYEE / SUBJECT</th>
-                <th className="p-4">CONFIDENCE</th>
-                <th className="p-4">CAMERA</th>
-                <th className="p-4">TIMESTAMP</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400">
-                    <Loader2 size={24} className="animate-spin mx-auto mb-2 text-indigo-600" />
-                    Streaming AI detection events...
-                  </td>
-                </tr>
-              ) : events.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400">
-                    No detection events logged yet. Active camera frames will push recognitions here[cite: 5].
-                  </td>
-                </tr>
-              ) : (
-                events.map((evt) => (
-                  <tr key={evt.id} className="hover:bg-slate-50/70 transition">
-                    <td className="p-4 font-mono font-bold text-slate-700">{evt.id}</td>
-                    <td className="p-4 font-bold text-indigo-600">{evt.event_type}</td>
-                    <td className="p-4">
-                      {evt.employee ? (
-                        <div>
-                          <p className="font-bold text-slate-900">{evt.employee.name}</p>
-                          <p className="text-[11px] text-slate-400 font-mono">{evt.employee.employee_code}</p>
-                        </div>
-                      ) : (
-                        <span className="text-rose-600 font-bold flex items-center gap-1">
-                          <ShieldAlert size={12} /> Unknown Person[cite: 5]
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 font-mono font-bold text-slate-700">
-                      {(evt.confidence * 100).toFixed(1)}%
-                    </td>
-                    <td className="p-4 font-mono text-slate-600">{evt.camera?.name || "--"}</td>
-                    <td className="p-4 font-mono text-slate-500">{evt.timestamp}</td>
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">Unauthorized Access</div>
+            <div className="text-2xl font-extrabold text-rose-600 mb-1">{aiData.metrics.unauthorizedAccess}</div>
+            <div className="text-[11px] text-rose-500 font-medium">↑ 33% from yesterday</div>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-4 h-4" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">People Counting</div>
+            <div className="text-2xl font-extrabold text-slate-900 mb-1">{aiData.metrics.peopleCounting}</div>
+            <div className="text-[11px] text-emerald-600 font-medium">↑ 12% from yesterday</div>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+            <Users className="w-4 h-4" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">Loitering</div>
+            <div className="text-2xl font-extrabold text-amber-600 mb-1">{aiData.metrics.loitering}</div>
+            <div className="text-[11px] text-emerald-600 font-medium">↓ 20% from yesterday</div>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+            <Clock className="w-4 h-4" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
+          <div>
+            <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">Safety Violation</div>
+            <div className="text-2xl font-extrabold text-rose-600 mb-1">{aiData.metrics.safetyViolation}</div>
+            <div className="text-[11px] text-emerald-600 font-medium">↑ 40% from yesterday</div>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+            <ShieldAlert className="w-4 h-4" />
+          </div>
+        </div>
+      </div>
+
+      {/* Filter Bar with All Severities & List/Grid Toggle */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="relative w-72">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search events..."
+            className="w-full pl-9 pr-4 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+          />
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select className="text-xs px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-600"><option>All event types</option></select>
+          <select className="text-xs px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-600"><option>All cameras</option></select>
+          <select className="text-xs px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-600"><option>All zones</option></select>
+          <select className="text-xs px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-600">
+            <option>All severities</option>
+            <option>High Severity</option>
+            <option>Medium Severity</option>
+            <option>Low Severity</option>
+          </select>
+
+          {/* List / Grid Toggle Buttons */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
+            <button
+              onClick={() => setViewMode("list")}
+              className={`flex items-center gap-1 px-3 py-1 text-xs font-semibold rounded-md transition ${
+                viewMode === "list" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <List className="w-3.5 h-3.5" /> List
+            </button>
+            <button
+              onClick={() => setViewMode("grid")}
+              className={`flex items-center gap-1 px-3 py-1 text-xs font-semibold rounded-md transition ${
+                viewMode === "grid" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" /> Grid
+            </button>
+          </div>
+
+          <button onClick={fetchAiEvents} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200">
+            <RefreshCw className="w-3.5 h-3.5" /> Reset
+          </button>
+        </div>
+      </div>
+
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          {viewMode === "list" ? (
+            <div className="overflow-x-auto flex-1">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase border-b border-slate-200">
+                    <th className="py-3 px-4"><input type="checkbox" className="rounded" /></th>
+                    <th className="py-3 px-4">Thumbnail</th>
+                    <th className="py-3 px-4">Time</th>
+                    <th className="py-3 px-4">Event Type</th>
+                    <th className="py-3 px-4">Location</th>
+                    <th className="py-3 px-4">Person / Object</th>
+                    <th className="py-3 px-4">Confidence</th>
+                    <th className="py-3 px-4">Actions</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {(currentRows || []).map((ev: any, idx: number) => (
+                    <tr
+                      key={idx}
+                      onClick={() => setSelectedEvent(ev)}
+                      className={`hover:bg-slate-50 cursor-pointer transition-colors ${selectedEvent?.id === ev.id ? "bg-indigo-50/40" : ""}`}
+                    >
+                      <td className="py-3 px-4"><input type="checkbox" className="rounded" /></td>
+                      <td className="py-3 px-4">
+                        <img src={ev.thumbnail} alt="thumb" className="w-12 h-8 rounded object-cover border border-slate-200" />
+                      </td>
+                      <td className="py-3 px-4 font-mono text-slate-700">
+                        <div>{ev.time}</div>
+                        <div className="text-[10px] text-slate-400">{ev.date}</div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
+                          {ev.eventType}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-slate-700 font-medium">{ev.location}</td>
+                      <td className="py-3 px-4 text-slate-600">{ev.person}</td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200">
+                          {ev.confidence}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 flex items-center gap-2 text-slate-400">
+                        <Eye className="w-4 h-4 hover:text-indigo-600" />
+                        <Download className="w-4 h-4 hover:text-indigo-600" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+              {(currentRows || []).map((ev: any, idx: number) => (
+                <div
+                  key={idx}
+                  onClick={() => setSelectedEvent(ev)}
+                  className={`border rounded-xl p-3 bg-white shadow-sm cursor-pointer transition hover:shadow-md ${
+                    selectedEvent?.id === ev.id ? "border-indigo-600 ring-2 ring-indigo-500/20" : "border-slate-200"
+                  }`}
+                >
+                  <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-900 mb-3">
+                    <img src={ev.thumbnail} alt="grid-thumb" className="w-full h-full object-cover" />
+                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-600 text-white">
+                      {ev.eventType}
+                    </span>
+                    <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-600 text-white">
+                      {ev.confidence}
+                    </span>
+                  </div>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-bold text-slate-900">{ev.location}</div>
+                    <div className="text-slate-500 flex justify-between">
+                      <span>{ev.person}</span>
+                      <span className="font-mono text-[11px]">{ev.time}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pagination */}
+          <div className="p-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 bg-white">
+            <span>Showing {Math.min(indexOfFirstRow + 1, allEvents.length)} - {Math.min(indexOfLastRow, allEvents.length)} of {allEvents.length} events</span>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))} disabled={currentPage === 1} className="px-2.5 py-1 border rounded hover:bg-slate-50 disabled:opacity-50">
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((num) => (
+                <button key={num} onClick={() => setCurrentPage(num)} className={`px-3 py-1 border rounded font-semibold ${currentPage === num ? "bg-indigo-600 text-white border-indigo-600" : "hover:bg-slate-50 text-slate-700"}`}>
+                  {num}
+                </button>
+              ))}
+              <button onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))} disabled={currentPage === totalPages} className="px-2.5 py-1 border rounded hover:bg-slate-50 disabled:opacity-50">
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side Drawer */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <h3 className="text-sm font-bold text-slate-900">Event Details</h3>
+              <span className="text-xs text-slate-400 cursor-pointer">✕</span>
+            </div>
+
+            {selectedEvent ? (
+              <div className="space-y-4 text-xs">
+                <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-900 aspect-video flex items-center justify-center">
+                  <img src={selectedEvent.thumbnail} alt="snapshot" className="w-full h-full object-cover opacity-80" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <button className="w-10 h-10 rounded-full bg-indigo-600/90 text-white flex items-center justify-center shadow-lg hover:bg-indigo-700 transition">
+                      <Play className="w-4 h-4 fill-current ml-0.5" />
+                    </button>
+                  </div>
+                  <div className="absolute bottom-2 left-2 bg-black/60 px-2 py-1 rounded text-[10px] text-white font-mono">
+                    CAM-01 | Main Entrance
+                  </div>
+                </div>
+
+                <div className="space-y-2.5 pt-2">
+                  <div className="flex justify-between border-b border-slate-50 pb-1.5">
+                    <span className="text-slate-400">Event Type</span>
+                    <span className="font-bold text-rose-600">{selectedEvent.eventType}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-50 pb-1.5">
+                    <span className="text-slate-400">Time</span>
+                    <span className="font-semibold text-slate-800">{selectedEvent.date}, {selectedEvent.time}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-50 pb-1.5">
+                    <span className="text-slate-400">Location</span>
+                    <span className="font-semibold text-slate-800">{selectedEvent.location}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-50 pb-1.5">
+                    <span className="text-slate-400">Person / Object</span>
+                    <span className="font-semibold text-slate-800">{selectedEvent.person}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-50 pb-1.5">
+                    <span className="text-slate-400">Confidence</span>
+                    <span className="font-bold text-emerald-600">{selectedEvent.confidence}</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12 text-slate-400 text-xs">Select an event to view details</div>
+            )}
+          </div>
+
+          <div className="space-y-2 pt-4 border-t border-slate-100">
+            <button onClick={() => alert("Downloading event snapshot...")} className="w-full py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition">
+              <Download className="w-3.5 h-3.5" /> Download Snapshot
+            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => alert("Marked as reviewed!")} className="py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-semibold text-emerald-700 flex items-center justify-center gap-1 transition">
+                <CheckCircle className="w-3.5 h-3.5" /> Mark Reviewed
+              </button>
+              <button onClick={() => alert("Added to watchlist!")} className="py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg text-xs font-semibold text-rose-700 flex items-center justify-center gap-1 transition">
+                <BookmarkPlus className="w-3.5 h-3.5" /> Add Watchlist
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

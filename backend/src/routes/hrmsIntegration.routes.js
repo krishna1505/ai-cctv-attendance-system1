@@ -10,7 +10,14 @@ const auth = typeof authModule === "function"
 
 // Company Admin Protected Routes
 router.get("/health", auth, hrmsController.getHrmsHealth);
+
+// Sync trigger mappings (supports both /sync and /trigger)
 router.post("/sync", auth, hrmsController.triggerHrmsSync);
+router.post("/trigger", auth, hrmsController.triggerHrmsSync);
+
+// Sync logs mappings (Frontend /logs mang raha hai)
+router.get("/logs", auth, hrmsController.getSyncLogs);       // <-- Isse 404 resolve hoga
 router.get("/sync-logs", auth, hrmsController.getSyncLogs);
+router.get("/", auth, hrmsController.getSyncLogs);
 
 module.exports = router;

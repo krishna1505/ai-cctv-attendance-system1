@@ -11,9 +11,10 @@ const {
 } = require("../controllers/attendance.controller");
 
 // Base path already "/api/attendance" hai app.js me
-router.post("/ingest", verifyToken, ingestDetection);
+router.get("/", verifyToken, getAttendanceLogs); // <-- Yeh line zaroori hai (Frontend /api/attendance hit karta hai)
 router.get("/logs", verifyToken, getAttendanceLogs);
 router.get("/daily-summary", verifyToken, getDailySummary);
+router.post("/ingest", verifyToken, ingestDetection);
 router.get("/sync-queue", verifyToken, getSyncQueue);
 router.post("/sync-retry", verifyToken, triggerSyncWorker);
 router.post("/recalculate-daily", verifyToken, recalculateDailyAttendance);

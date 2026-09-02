@@ -1,135 +1,300 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { Clock, Coffee, Users2, AlertCircle, Building2, Loader2, RefreshCw } from "lucide-react";
-import { fetchWithAuth } from "@/lib/api";
+import React, { useState, useEffect } from "react";
+import {
+  Download,
+  Calendar,
+  Users,
+  Clock,
+  TrendingUp,
+  Activity,
+  MapPin,
+  Video,
+  ChevronRight,
+} from "lucide-react";
 
-interface AnalyticsSummary {
-  avgOfficePresence: string;
-  avgDeskPresence: string;
-  avgBreakTime: string;
-  avgMeetingTime: string;
-  employeeStats: Array<{
-    id: string;
-    name: string;
-    employee_code: string;
-    department: string;
-    officePresence: string;
-    deskPresence: string;
-    breakTime: string;
-    meetingTime: string;
-  }>;
-}
-
-export default function AnalyticsPage() {
-  const [data, setData] = useState<AnalyticsSummary | null>(null);
+export default function PresenceAnalyticsPage() {
   const [loading, setLoading] = useState(true);
+  const [analyticsData, setAnalyticsData] = useState({
+    metrics: {
+      totalPeopleDetected: 186,
+      averageDwellTime: "5h 18m",
+      peakOccupancy: 92,
+      workspaceUtilization: "68%",
+    },
+    zoneOccupancy: [],
+    recentZoneActivity: [],
+    topActiveAreas: [],
+  });
 
-  const loadAnalytics = async () => {
-    setLoading(true);
-    const res = await fetchWithAuth<AnalyticsSummary>("/api/analytics/company");
-    if (res.success && res.data) {
-      setData(res.data);
+  const getAuthToken = () => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("token") || localStorage.getItem("admin_token") || "";
+  };
+
+  const fetchAnalytics = async () => {
+    try {
+      setLoading(true);
+      const token = getAuthToken();
+      const res = await fetch("http://localhost:5000/api/analytics/dashboard", {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      const json = await res.json();
+      if (json?.success && json?.data) {
+        setAnalyticsData(json.data);
+      }
+    } catch (err) {
+      console.warn("Using fallback analytics data", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
-    loadAnalytics();
+    fetchAnalytics();
   }, []);
 
   return (
-    <div className="p-8 space-y-7 max-w-[1600px] mx-auto bg-[#F8FAFC]">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="min-h-screen bg-[#F8FAFC] p-6 lg:p-8 text-slate-800">
+      {/* Top Header & Global Filter Bar */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Presence Analytics</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Zone-based physical workforce presence session aggregation[cite: 5]
-          </p>
+          <span className="text-xs font-semibold tracking-wider text-slate-400 uppercase">PRESENCE ANALYTICS</span>
+          <h1 className="text-2xl font-bold text-slate-900 mt-1">Presence Analytics</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Understand workspace utilization and real-time presence insights</p>
         </div>
-        <button
-          onClick={loadAnalytics}
-          className="px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 flex items-center gap-2"
-        >
-          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
-        </button>
-      </div>
 
-      <div className="p-3.5 bg-amber-50/80 border border-amber-200/80 rounded-2xl text-xs text-amber-900 flex items-center gap-2.5">
-        <AlertCircle size={17} className="text-amber-600 shrink-0" />
-        <span>
-          <strong>Presence Policy:</strong> Camera-based presence measures visible presence within designated zones[cite: 5]. These metrics do not reflect actual work quality or intellectual productivity[cite: 5].
-        </span>
-      </div>
-
-      {/* 4 Cards Hooked Dynamically */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-          <span className="text-xs font-semibold text-slate-500">Avg. Office Presence</span>
-          <p className="text-2xl font-black text-slate-900 mt-1">{data?.avgOfficePresence || "--"}</p>
-        </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-          <span className="text-xs font-semibold text-slate-500">Avg. Desk Presence</span>
-          <p className="text-2xl font-black text-slate-900 mt-1">{data?.avgDeskPresence || "--"}</p>
-        </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-          <span className="text-xs font-semibold text-slate-500">Avg. Break Time</span>
-          <p className="text-2xl font-black text-slate-900 mt-1">{data?.avgBreakTime || "--"}</p>
-        </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-          <span className="text-xs font-semibold text-slate-500">Avg. Meeting Time</span>
-          <p className="text-2xl font-black text-slate-900 mt-1">{data?.avgMeetingTime || "--"}</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm font-medium text-slate-700">
+            <Calendar className="w-4 h-4 text-indigo-600" />
+            <span>Mon, 24 Aug 2026</span>
+          </div>
+          <select className="bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm font-medium text-slate-700 focus:outline-none">
+            <option>All departments</option>
+          </select>
+          <select className="bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm font-medium text-slate-700 focus:outline-none">
+            <option>All zones</option>
+          </select>
+          <button onClick={() => alert("Exporting Presence Analytics...")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors">
+            <Download className="w-4 h-4" /> Export
+          </button>
         </div>
       </div>
 
-      {/* Breakdown Table */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-slate-100">
-          <h2 className="text-sm font-bold text-slate-800">Workforce Presence Breakdown</h2>
+      {/* Top 4 KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
+          <div>
+            <div className="text-xs font-semibold text-slate-400 uppercase mb-1">Total People Detected</div>
+            <div className="text-3xl font-extrabold text-slate-900 mb-1">{analyticsData.metrics.totalPeopleDetected}</div>
+            <div className="text-xs text-emerald-600 font-medium">↑ 12% from yesterday</div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+            <Users className="w-5 h-5" />
+          </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-              <tr>
-                <th className="p-4">EMPLOYEE</th>
-                <th className="p-4">DEPARTMENT</th>
-                <th className="p-4">OFFICE PRESENCE</th>
-                <th className="p-4">DESK PRESENCE</th>
-                <th className="p-4">BREAK TIME</th>
-                <th className="p-4">MEETING TIME</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400">
-                    <Loader2 size={24} className="animate-spin mx-auto mb-2 text-indigo-600" />
-                    Computing presence sessions...
-                  </td>
-                </tr>
-              ) : !data || data.employeeStats.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400">
-                    No presence session records found for selected period[cite: 5].
-                  </td>
-                </tr>
-              ) : (
-                data.employeeStats.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-slate-50/70 transition">
-                    <td className="p-4">
-                      <p className="font-bold text-slate-900">{emp.name}</p>
-                      <p className="text-[11px] text-slate-400 font-mono">{emp.employee_code}</p>
-                    </td>
-                    <td className="p-4 text-slate-600">{emp.department}</td>
-                    <td className="p-4 font-semibold text-slate-800">{emp.officePresence}</td>
-                    <td className="p-4 font-semibold text-emerald-700">{emp.deskPresence}</td>
-                    <td className="p-4 text-amber-700 font-medium">{emp.breakTime}</td>
-                    <td className="p-4 text-sky-700 font-medium">{emp.meetingTime}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
+          <div>
+            <div className="text-xs font-semibold text-slate-400 uppercase mb-1">Average Dwell Time</div>
+            <div className="text-3xl font-extrabold text-slate-900 mb-1">{analyticsData.metrics.averageDwellTime}</div>
+            <div className="text-xs text-emerald-600 font-medium">↑ 8% from yesterday</div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+            <Clock className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
+          <div>
+            <div className="text-xs font-semibold text-slate-400 uppercase mb-1">Peak Occupancy</div>
+            <div className="text-3xl font-extrabold text-slate-900 mb-1">{analyticsData.metrics.peakOccupancy}</div>
+            <div className="text-xs text-emerald-600 font-medium">↑ 15% from yesterday</div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+            <TrendingUp className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
+          <div>
+            <div className="text-xs font-semibold text-slate-400 uppercase mb-1">Workspace Utilization</div>
+            <div className="text-3xl font-extrabold text-indigo-600 mb-1">{analyticsData.metrics.workspaceUtilization}</div>
+            <div className="text-xs text-emerald-600 font-medium">↑ 6% from yesterday</div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+            <Activity className="w-5 h-5" />
+          </div>
+        </div>
+      </div>
+
+      {/* Row 1: Presence Trend & Zone Occupancy & Live Presence */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* Presence Trend Chart Box */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-slate-900">Presence Trend</h3>
+            <div className="flex items-center gap-3 text-[11px]">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-600"></span> Total</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Inside</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500"></span> Visitors</span>
+            </div>
+          </div>
+          <div className="h-48 bg-slate-50 rounded-xl flex items-end justify-between p-4 border border-dashed border-slate-200">
+            {["6 AM", "8 AM", "10 AM", "12 PM", "2 PM", "4 PM", "6 PM", "8 PM"].map((time, idx) => (
+              <div key={idx} className="flex flex-col items-center gap-2 flex-1">
+                <div className="w-2.5 bg-indigo-600 rounded-t" style={{ height: `${40 + (idx * 7)}%` }}></div>
+                <span className="text-[10px] text-slate-400">{time}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Zone Occupancy Bars */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <h3 className="text-sm font-bold text-slate-900">Zone Occupancy</h3>
+            <span className="text-xs text-indigo-600 font-semibold cursor-pointer">Live</span>
+          </div>
+          <div className="space-y-2.5 text-xs">
+            {(analyticsData.zoneOccupancy || []).slice(0, 5).map((z: any, idx: number) => (
+              <div key={idx} className="space-y-1">
+                <div className="flex justify-between font-medium text-slate-700 text-[11px]">
+                  <span>{z.name}</span>
+                  <span className="font-bold">{z.occupancyPercent}</span>
+                </div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div className="bg-indigo-600 h-full rounded-full" style={{ width: z.occupancyPercent }}></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Live Presence Camera Stream Card */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <h3 className="text-sm font-bold text-slate-900">Live Presence</h3>
+            <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-bold">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Live
+            </span>
+          </div>
+          <div className="relative rounded-xl overflow-hidden bg-slate-900 aspect-video my-3 flex items-center justify-center">
+            <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?w=400" alt="live" className="w-full h-full object-cover opacity-80" />
+            <div className="absolute bottom-2 left-2 bg-black/60 px-2.5 py-1 rounded text-[10px] text-white font-mono">
+              Main Entrance • 12 people inside
+            </div>
+          </div>
+          <div className="text-xs text-slate-500 flex justify-between items-center pt-1">
+            <span>Camera CAM-01 Active</span>
+            <button className="text-indigo-600 font-semibold hover:underline">Expand View →</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Row 2: Heatmap & Department-wise Presence */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* Heatmap Office Floor Plan */}
+        <div className="lg:col-span-2 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+            <h3 className="text-sm font-bold text-slate-900">Heatmap (Office Floor Plan)</h3>
+            <div className="flex items-center gap-3 text-[11px] text-slate-500">
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-rose-500"></span> High</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-amber-400"></span> Medium</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-sky-400"></span> Low</span>
+            </div>
+          </div>
+          <div className="h-64 rounded-xl bg-slate-100 relative overflow-hidden border border-slate-200 flex items-center justify-center">
+            <img src="https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=800" alt="floorplan" className="w-full h-full object-cover opacity-60" />
+            <div className="absolute inset-0 bg-indigo-950/20 flex items-center justify-center">
+              <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-xl shadow-md text-xs font-bold text-slate-800">
+                🏢 Live Thermal Heatmap Active across 8 Zones
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Department-wise Presence */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <h3 className="text-sm font-bold text-slate-900">Department-wise Presence</h3>
+            <span className="text-xs text-indigo-600 font-semibold cursor-pointer">Details</span>
+          </div>
+          <div className="space-y-3 text-xs">
+            {["Engineering", "Sales", "Marketing", "HR", "Finance"].map((dept, idx) => (
+              <div key={idx} className="flex items-center justify-between py-1.5 border-b border-slate-50">
+                <span className="font-medium text-slate-700">{dept}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-600 font-bold">{90 - (idx * 4)}% Present</span>
+                  <span className="text-slate-400">({12 - idx} abs)</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 3: Recent Zone Activity, Top Active Areas & Insights */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recent Zone Activity */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <h3 className="text-sm font-bold text-slate-900">Recent Zone Activity</h3>
+            <span className="text-xs text-indigo-600 font-semibold cursor-pointer">View All</span>
+          </div>
+          <div className="space-y-3">
+            {(analyticsData.recentZoneActivity || []).map((act: any, idx: number) => (
+              <div key={idx} className="flex items-center justify-between pb-2.5 border-b border-slate-50 last:border-0 text-xs">
+                <div>
+                  <div className="font-bold text-slate-800">{act.zone} • <span className="text-slate-500 font-normal">{act.event}</span></div>
+                  <div className="text-[10px] text-slate-400">{act.camera} • {act.time}</div>
+                </div>
+                <span className="px-2 py-0.5 rounded text-xs font-bold bg-indigo-50 text-indigo-600 font-mono">
+                  {act.count}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Top Active Areas */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <h3 className="text-sm font-bold text-slate-900">Top Active Areas</h3>
+            <span className="text-xs text-indigo-600 font-semibold cursor-pointer">Rankings</span>
+          </div>
+          <div className="space-y-3">
+            {(analyticsData.topActiveAreas || []).map((area: any, idx: number) => (
+              <div key={idx} className="flex items-center justify-between pb-2.5 border-b border-slate-50 last:border-0 text-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-[11px]">
+                    {idx + 1}
+                  </div>
+                  <span className="font-semibold text-slate-800">{area.name}</span>
+                </div>
+                <span className="font-bold text-slate-600">{area.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Presence Insights */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <h3 className="text-sm font-bold text-slate-900">Presence Insights</h3>
+            <span className="text-xs text-indigo-600 font-semibold cursor-pointer">AI Analysis</span>
+          </div>
+          <div className="space-y-3 text-xs text-slate-600">
+            <div className="p-2.5 bg-emerald-50/60 border border-emerald-100 rounded-lg">
+              💡 Office is 12% more occupied than yesterday with higher attendance in Engineering.
+            </div>
+            <div className="p-2.5 bg-blue-50/60 border border-blue-100 rounded-lg">
+              ⚡ Average dwell time increased by 28 minutes. People are spending more time in office.
+            </div>
+            <div className="p-2.5 bg-amber-50/60 border border-amber-100 rounded-lg">
+              🔥 Cafeteria sees peak crowd at 1:00 PM. Consider increasing seating capacity.
+            </div>
+          </div>
         </div>
       </div>
     </div>
