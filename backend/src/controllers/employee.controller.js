@@ -171,9 +171,132 @@ const syncEmployeesFromHRMS = async (req, res) => {
   }
 };
 
+// POST /api/employees
+const createEmployee = async (req, res) => {
+  try {
+    const { companyId } = req.user;
+    const { employeeCode, name, email, mobile, designation, departmentName, status } = req.body;
+
+    if (!employeeCode || !name) {
+      return res.status(400).json({ success: false, message: "Employee Code and Name are required" });
+    }
+
+    const hrmsEmployeeId = `LOCAL-EMP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    let departmentId = null;
+    if (departmentName) {
+      const dept = await prisma.department.upsert({
+        where: { companyId_name: { companyId, name: departmentName } },
+        update: {},
+        create: { companyId, name: departmentName }
+      });
+      departmentId = dept.id;
+    }
+
+    const employee = await prisma.employee.create({
+      data: {
+        companyId,
+        hrmsEmployeeId,
+        employeeCode,
+        name,
+        email,
+        mobile,
+        designation,
+        departmentId,
+        status: status || "ACTIVE",
+      },
+      include: {
+        department: { select: { id: true, name: true } }
+      }
+    });
+
+    return res.status(201).json({ success: true, data: employee });
+  } catch (error) {
+    console.error("Create employee error:", error);
+    if (error.code === 'P2002') {
+        return res.status(400).json({ success: false, message: "Employee code must be unique" });
+    }
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// PUT /api/employees/:id
+const updateEmployee = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { companyId } = req.user;
+    const { employeeCode, name, email, mobile, designation, departmentName, status } = req.body;
+
+    // Verify ownership
+    const existing = await prisma.employee.findFirst({ where: { id, companyId } });
+    if (!existing) {
+        return res.status(404).json({ success: false, message: "Employee not found" });
+    }
+
+    let departmentId = undefined;
+    if (departmentName) {
+      const dept = await prisma.department.upsert({
+        where: { companyId_name: { companyId, name: departmentName } },
+        update: {},
+        create: { companyId, name: departmentName }
+      });
+      departmentId = dept.id;
+    }
+
+    const employee = await prisma.employee.update({
+      where: { id },
+      data: {
+        ...(employeeCode && { employeeCode }),
+        ...(name && { name }),
+        email,
+        mobile,
+        designation,
+        ...(status && { status }),
+        ...(departmentId !== undefined && { departmentId })
+      },
+      include: {
+        department: { select: { id: true, name: true } }
+      }
+    });
+
+    return res.status(200).json({ success: true, data: employee });
+  } catch (error) {
+    console.error("Update employee error:", error);
+    if (error.code === 'P2002') {
+        return res.status(400).json({ success: false, message: "Employee code must be unique" });
+    }
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// DELETE /api/employees/:id
+const deleteEmployee = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { companyId } = req.user;
+
+    const existing = await prisma.employee.findFirst({ where: { id, companyId } });
+    if (!existing) {
+        return res.status(404).json({ success: false, message: "Employee not found" });
+    }
+
+    await prisma.employee.delete({
+      where: { id }
+    });
+
+    return res.status(200).json({ success: true, message: "Employee deleted successfully" });
+  } catch (error) {
+    console.error("Delete employee error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
 module.exports = {
   getEmployees,
   getEmployeeById,
   getDepartments,
   syncEmployeesFromHRMS,
+  createEmployee,
+  updateEmployee,
+  deleteEmployee
 };

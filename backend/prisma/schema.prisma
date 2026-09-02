@@ -176,6 +176,8 @@ model Employee {
   hrmsEmployeeId       String                 @map("hrms_employee_id")
   employeeCode         String                 @map("employee_code")
   name                 String
+  email                String?
+  mobile               String?
   departmentId         String?                @map("department_id")
   shiftSnapshotId      String?                @map("shift_snapshot_id")
   designation          String?

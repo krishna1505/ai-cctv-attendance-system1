@@ -579,17 +579,28 @@ const getCompanyDashboardAnalytics = async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized company scope" });
     }
 
-    const today = new Date();
-    const startOfToday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const { date } = req.query;
+
+    let targetDate;
+    if (date) {
+      targetDate = new Date(`${date}T00:00:00.000Z`);
+      if (isNaN(targetDate.getTime())) {
+        const today = new Date();
+        targetDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+      }
+    } else {
+      const today = new Date();
+      targetDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    }
 
     const [totalEmployees, dailyRecords, activeCameras, analyticsAgg] = await Promise.all([
       prisma.employee.count({ where: { companyId, status: "ACTIVE" } }),
       prisma.dailyAttendance.findMany({
-        where: { companyId, attendanceDate: startOfToday },
+        where: { companyId, attendanceDate: targetDate },
       }),
       prisma.camera.count({ where: { companyId, status: "ACTIVE" } }),
       prisma.employeeDailyAnalytics.findMany({
-        where: { companyId, date: startOfToday },
+        where: { companyId, date: targetDate },
       }),
     ]);
 

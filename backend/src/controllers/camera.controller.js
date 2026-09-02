@@ -120,12 +120,11 @@ const addCamera = async (req, res) => {
       },
     });
 
-    // Module 3 Audit Trail: Log Camera Registration
     await prisma.auditLog.create({
       data: {
         companyId,
         action: "CAMERA_REGISTERED",
-        performedBy: req.user?.email || "ADMIN",
+        adminUserId: req.user?.id || req.admin?.id || null,
         details: { cameraId: camera.id, cameraName: camera.name, location },
         ipAddress: req.ip || req.connection?.remoteAddress,
       },
@@ -180,12 +179,11 @@ const updateCamera = async (req, res) => {
       data: updateData,
     });
 
-    // Module 3 Audit Trail: Log Camera Update
     await prisma.auditLog.create({
       data: {
         companyId,
         action: "CAMERA_UPDATED",
-        performedBy: req.user?.email || "ADMIN",
+        adminUserId: req.user?.id || req.admin?.id || null,
         details: { cameraId: id, updatedFields: Object.keys(updateData) },
         ipAddress: req.ip || req.connection?.remoteAddress,
       },
@@ -225,12 +223,11 @@ const deleteCamera = async (req, res) => {
 
     await prisma.camera.delete({ where: { id } });
 
-    // Module 3 Audit Trail: Log Camera Deletion
     await prisma.auditLog.create({
       data: {
         companyId,
         action: "CAMERA_DELETED",
-        performedBy: req.user?.email || "ADMIN",
+        adminUserId: req.user?.id || req.admin?.id || null,
         details: { cameraId: id, cameraName: existingCamera.name },
         ipAddress: req.ip || req.connection?.remoteAddress,
       },
