@@ -12,7 +12,7 @@ const reportRoutes = require("./routes/report.routes");
 const aiEventRoutes = require("./routes/aiEvent.routes");
 const hrmsIntegrationRoutes = require("./routes/hrmsIntegration.routes");
 const settingsRoutes = require("./routes/settings.routes");
-const syncRoutes = require("./routes/sync.routes"); // 👈 Added: HRMS Sync dashboard and trigger routes
+const syncRoutes = require("./routes/sync.routes");
 
 const app = express();
 
@@ -41,18 +41,13 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/hrms", hrmsIntegrationRoutes);
 app.use("/api/settings", settingsRoutes);
 
-// Frontend-aligned Route Aliases
+// Frontend-aligned Route Aliases & Integrations
 app.use("/api/integrations/hrms", hrmsIntegrationRoutes);
 app.use("/integrations/hrms", hrmsIntegrationRoutes);
-app.use("/api/ai-events", require("./routes/aiEvent.routes"));
-app.use("/api/reports", require("./routes/report.routes"));
-app.use("/api/analytics", require("./routes/analytics.routes"));
-// 👈 Added: Mount syncRoutes so /api/integrations/hrms/dashboard & /trigger work seamlessly
 app.use("/api/integrations/hrms", syncRoutes);
 
 // =========================================================================
 // 4. StaffPie Mock Receiver: Hardware Device Punch (POST /api/v1/attendance/device/punch)
-// Handles outbound worker queues without requiring physical external HRMS server
 // =========================================================================
 app.post("/api/v1/attendance/device/punch", (req, res) => {
   const { employeeCode, deviceId, eventType, timestamp } = req.body || {};
@@ -77,7 +72,7 @@ app.post("/api/v1/attendance/device/punch", (req, res) => {
   });
 });
 
-// 5. Global Error Handler Boundary (Failure Handling Matrix)
+// 5. Global Error Handler Boundary
 app.use((err, req, res, next) => {
   console.error("[Global Error Boundary]:", err);
   res.status(500).json({

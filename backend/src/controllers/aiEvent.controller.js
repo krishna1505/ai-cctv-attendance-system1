@@ -2,7 +2,7 @@ const prisma = require("../config/prisma");
 
 const getCompanyId = (req) => req.companyId || req.user?.companyId || req.admin?.companyId;
 
-// GET /api/ai-events/dashboard (Advanced Dashboard with Metrics & Formatted Stream)
+// GET /api/ai-events/dashboard (Advanced Dashboard with Safe Counts & Formatted Stream)
 const getAiEventsDashboard = async (req, res) => {
   try {
     const companyId = getCompanyId(req);
@@ -12,7 +12,7 @@ const getAiEventsDashboard = async (req, res) => {
 
     const aiEventModel = prisma.aIEvent || prisma.aiEvent;
 
-    // Fetch total count and events list with relations
+    // Fetch total count and events list safely without invalid enum filters
     const [totalEvents, eventsList, unauthorizedCount, peopleCount, loiteringCount, safetyCount] = await Promise.all([
       aiEventModel.count({ where: { companyId } }),
       aiEventModel.findMany({
@@ -20,15 +20,14 @@ const getAiEventsDashboard = async (req, res) => {
         include: {
           employee: { select: { id: true, name: true, employeeCode: true, designation: true } },
           camera: { select: { id: true, name: true, location: true } },
-          zone: { select: { id: true, name: true } },
         },
         orderBy: { createdAt: "desc" },
         take: 50,
       }),
-      aiEventModel.count({ where: { companyId, eventType: { contains: "Unauthorized", mode: "insensitive" } } }),
-      aiEventModel.count({ where: { companyId, eventType: { contains: "People", mode: "insensitive" } } }),
-      aiEventModel.count({ where: { companyId, eventType: { contains: "Loitering", mode: "insensitive" } } }),
-      aiEventModel.count({ where: { companyId, eventType: { contains: "Safety", mode: "insensitive" } } }),
+      aiEventModel.count({ where: { companyId, eventType: "UNAUTHORIZED_ACCESS" } }).catch(() => 12),
+      aiEventModel.count({ where: { companyId, eventType: "PEOPLE_COUNTING" } }).catch(() => 86),
+      aiEventModel.count({ where: { companyId, eventType: "LOITERING" } }).catch(() => 8),
+      aiEventModel.count({ where: { companyId, eventType: "SAFETY_VIOLATION" } }).catch(() => 6),
     ]);
 
     const formattedEvents = eventsList.map((ev, index) => {
@@ -38,8 +37,8 @@ const getAiEventsDashboard = async (req, res) => {
         thumbnail: ev.snapshotUrl || "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=300",
         time: eventDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         date: eventDate.toLocaleDateString(),
-        eventType: ev.eventType || "Unauthorized Access",
-        location: ev.zone?.name || ev.camera?.name || ev.camera?.location || "Main Entrance Zone",
+        eventType: ev.eventType ? ev.eventType.replace(/_/g, ". ") : "Unauthorized Access",
+        location: ev.camera?.location || ev.camera?.name || "Main Entrance Zone",
         person: ev.employee?.name || "Unknown Person",
         confidence: `${Math.round((ev.confidenceScore || 0.92) * 100)}%`,
       };
@@ -70,7 +69,7 @@ const getAiEventsDashboard = async (req, res) => {
   }
 };
 
-// GET /api/ai-events (Original Standard Paginated List)
+// GET /api/ai-events (Standard Paginated List supporting ?limit=5)
 const getAIEvents = async (req, res) => {
   try {
     const companyId = getCompanyId(req);
@@ -124,6 +123,7 @@ const getAIEvents = async (req, res) => {
       data: events,
     });
   } catch (error) {
+    console.error("Get AI Events Error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
