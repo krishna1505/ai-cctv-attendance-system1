@@ -67,15 +67,15 @@ export default function Sidebar() {
 
   return (
     <aside className="w-60 bg-white text-slate-600 min-h-screen flex flex-col border-r border-slate-200/80 shrink-0 select-none">
-      {/* Brand Logo */}
-      <div className="h-16 px-6 flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-sm shadow-indigo-200">
+      {/* Brand Logo - Clickable to Home Dashboard */}
+      <Link href="/dashboard" className="h-16 px-6 flex items-center gap-2.5 cursor-pointer group">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-sm shadow-indigo-200 group-hover:scale-105 transition">
           <span className="font-extrabold text-base tracking-tighter">S</span>
         </div>
-        <span className="text-xl font-extrabold tracking-tight text-slate-900 font-sans">
+        <span className="text-xl font-extrabold tracking-tight text-slate-900 font-sans group-hover:text-indigo-600 transition">
           staffpie
         </span>
-      </div>
+      </Link>
 
       {/* Navigation Sections */}
       <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
@@ -125,12 +125,13 @@ export default function Sidebar() {
         
         <button 
           onClick={() => {
-            localStorage.removeItem("staffpie_token");
+            localStorage.removeItem("token");
+            localStorage.removeItem("admin_token");
             localStorage.removeItem("staffpie_user");
             localStorage.removeItem("staffpie_companyId");
             window.location.href = "/login";
           }}
-          className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold text-red-500 hover:bg-red-50 hover:text-red-600 rounded-xl transition"
+          className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold text-red-500 hover:bg-red-50 hover:text-red-600 rounded-xl transition cursor-pointer"
         >
           <LogOut size={14} /> Sign Out
         </button>

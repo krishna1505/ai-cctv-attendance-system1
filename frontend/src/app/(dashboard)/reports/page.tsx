@@ -23,6 +23,37 @@ export default function ReportsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 8;
 
+  // Helper functions for dynamic dates based on real-time
+  const getDynamicDateRanges = () => {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+
+    // Start of month (e.g., 01 Sep 2026)
+    const startDate = new Date(currentYear, currentMonth, 1);
+    const options: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' };
+    
+    return {
+      rangeString: `${startDate.toLocaleDateString('en-GB', options)} - ${today.toLocaleDateString('en-GB', options)}`,
+      formattedToday: today.toLocaleDateString('en-GB', options),
+    };
+  };
+
+  // Generate dynamic last 7 days for the chart
+  const getDynamicChartDays = () => {
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const options: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short' };
+      days.push(d.toLocaleDateString('en-GB', options));
+    }
+    return days;
+  };
+
+  const dynamicDates = getDynamicDateRanges();
+  const chartDays = getDynamicChartDays();
+
   const [reportData, setReportData] = useState({
     metrics: {
       totalEmployees: 248,
@@ -33,9 +64,9 @@ export default function ReportsPage() {
     },
     attendanceDetails: [],
     scheduledReports: [
-      { id: 1, name: "Daily Attendance", frequency: "Daily", nextRun: "25 Aug, 06:00 AM", status: "Active" },
-      { id: 2, name: "Weekly Summary", frequency: "Weekly", nextRun: "31 Aug, 06:00 AM", status: "Active" },
-      { id: 3, name: "Monthly Report", frequency: "Monthly", nextRun: "1 Sep, 06:00 AM", status: "Active" },
+      { id: 1, name: "Daily Attendance", frequency: "Daily", nextRun: `Tomorrow, 06:00 AM`, status: "Active" },
+      { id: 2, name: "Weekly Summary", frequency: "Weekly", nextRun: `Next Monday, 06:00 AM`, status: "Active" },
+      { id: 3, name: "Monthly Report", frequency: "Monthly", nextRun: `1st Next Month, 06:00 AM`, status: "Active" },
     ],
   });
 
@@ -90,7 +121,7 @@ export default function ReportsPage() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm font-medium text-slate-700">
             <Calendar className="w-4 h-4 text-indigo-600" />
-            <span>01 Aug 2026 - 24 Aug 2026</span>
+            <span>{dynamicDates.rangeString}</span>
           </div>
 
           <select className="bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm font-medium text-slate-700 focus:outline-none">
@@ -108,7 +139,7 @@ export default function ReportsPage() {
 
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors cursor-pointer"
           >
             <Download className="w-4 h-4" />
             Export Report
@@ -122,7 +153,7 @@ export default function ReportsPage() {
           <div>
             <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">Total Employees</div>
             <div className="text-2xl font-extrabold text-slate-900 mb-1">{reportData.metrics.totalEmployees}</div>
-            <div className="text-[11px] text-emerald-600 font-medium">↑ 12% from previous period</div>
+            <div className="text-[11px] text-emerald-600 font-medium">↑ Active in system</div>
           </div>
           <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
             <Users className="w-4 h-4" />
@@ -133,7 +164,7 @@ export default function ReportsPage() {
           <div>
             <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">Average Attendance</div>
             <div className="text-2xl font-extrabold text-slate-900 mb-1">{reportData.metrics.averageAttendance}</div>
-            <div className="text-[11px] text-emerald-600 font-medium">↑ 5% from previous period</div>
+            <div className="text-[11px] text-emerald-600 font-medium">↑ Consistent rate</div>
           </div>
           <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
             <Clock className="w-4 h-4" />
@@ -144,7 +175,7 @@ export default function ReportsPage() {
           <div>
             <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">Total Working Hours</div>
             <div className="text-2xl font-extrabold text-slate-900 mb-1">{reportData.metrics.totalWorkingHours}</div>
-            <div className="text-[11px] text-emerald-600 font-medium">↑ 8% from previous period</div>
+            <div className="text-[11px] text-emerald-600 font-medium">↑ Tracked live</div>
           </div>
           <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
             <FileText className="w-4 h-4" />
@@ -155,7 +186,7 @@ export default function ReportsPage() {
           <div>
             <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">Late Arrivals</div>
             <div className="text-2xl font-extrabold text-rose-600 mb-1">{reportData.metrics.lateArrivals}</div>
-            <div className="text-[11px] text-rose-500 font-medium">↓ 20% from previous period</div>
+            <div className="text-[11px] text-rose-500 font-medium">Requires review</div>
           </div>
           <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
             <AlertCircle className="w-4 h-4" />
@@ -166,7 +197,7 @@ export default function ReportsPage() {
           <div>
             <div className="text-[11px] font-semibold text-slate-400 uppercase mb-1">Absentees</div>
             <div className="text-2xl font-extrabold text-rose-600 mb-1">{reportData.metrics.absentees}</div>
-            <div className="text-[11px] text-rose-500 font-medium">↑ 14% from previous period</div>
+            <div className="text-[11px] text-rose-500 font-medium">Updated today</div>
           </div>
           <div className="w-9 h-9 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center shrink-0">
             <Users className="w-4 h-4" />
@@ -188,7 +219,7 @@ export default function ReportsPage() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`py-3.5 border-b-2 whitespace-nowrap transition-all ${
+            className={`py-3.5 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
               activeTab === tab.id
                 ? "border-indigo-600 text-indigo-600 font-bold"
                 : "border-transparent text-slate-500 hover:text-slate-800"
@@ -205,7 +236,7 @@ export default function ReportsPage() {
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-slate-900">Attendance Overview</h3>
+              <h3 className="text-sm font-bold text-slate-900">Attendance Overview ({dynamicDates.formattedToday})</h3>
               <div className="flex items-center gap-4 text-xs">
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Present</span>
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Late</span>
@@ -214,14 +245,14 @@ export default function ReportsPage() {
             </div>
 
             <div className="h-44 bg-slate-50 rounded-xl flex items-end justify-between p-4 border border-dashed border-slate-200">
-              {["18 Aug", "19 Aug", "20 Aug", "21 Aug", "22 Aug", "23 Aug", "24 Aug"].map((date, idx) => (
+              {chartDays.map((dateStr, idx) => (
                 <div key={idx} className="flex flex-col items-center gap-2 flex-1">
                   <div className="flex items-end gap-1 h-32 w-full justify-center">
                     <div className="w-3 bg-emerald-500 rounded-t" style={{ height: `${70 + (idx * 3)}%` }}></div>
                     <div className="w-3 bg-amber-500 rounded-t" style={{ height: `${30 + (idx * 2)}%` }}></div>
                     <div className="w-3 bg-rose-500 rounded-t" style={{ height: `${20 + (idx * 2)}%` }}></div>
                   </div>
-                  <span className="text-[10px] text-slate-400 font-medium">{date}</span>
+                  <span className="text-[10px] text-slate-400 font-medium">{dateStr}</span>
                 </div>
               ))}
             </div>
@@ -256,27 +287,35 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
-                  {(currentRows || []).map((row: any, idx: number) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-3 px-4"><input type="checkbox" className="rounded" /></td>
-                      <td className="py-3 px-4 font-mono font-medium text-slate-700">{row.employeeCode}</td>
-                      <td className="py-3 px-4 font-semibold text-slate-900">{row.name}</td>
-                      <td className="py-3 px-4 text-slate-600">{row.department}</td>
-                      <td className="py-3 px-4 text-emerald-600 font-bold">{row.present}</td>
-                      <td className="py-3 px-4 text-amber-600 font-bold">{row.late}</td>
-                      <td className="py-3 px-4 text-rose-600 font-bold">{row.absent}</td>
-                      <td className="py-3 px-4 text-slate-600">{row.totalDays}</td>
-                      <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200">
-                          {row.attendancePercentage}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 flex items-center gap-2 text-slate-400">
-                        <Eye className="w-4 h-4 cursor-pointer hover:text-indigo-600" />
-                        <MoreHorizontal className="w-4 h-4 cursor-pointer hover:text-slate-600" />
+                  {(currentRows || []).length > 0 ? (
+                    currentRows.map((row: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="py-3 px-4"><input type="checkbox" className="rounded" /></td>
+                        <td className="py-3 px-4 font-mono font-medium text-slate-700">{row.employeeCode}</td>
+                        <td className="py-3 px-4 font-semibold text-slate-900">{row.name}</td>
+                        <td className="py-3 px-4 text-slate-600">{row.department}</td>
+                        <td className="py-3 px-4 text-emerald-600 font-bold">{row.present}</td>
+                        <td className="py-3 px-4 text-amber-600 font-bold">{row.late}</td>
+                        <td className="py-3 px-4 text-rose-600 font-bold">{row.absent}</td>
+                        <td className="py-3 px-4 text-slate-600">{row.totalDays}</td>
+                        <td className="py-3 px-4">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200">
+                            {row.attendancePercentage}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 flex items-center gap-2 text-slate-400">
+                          <Eye className="w-4 h-4 cursor-pointer hover:text-indigo-600" />
+                          <MoreHorizontal className="w-4 h-4 cursor-pointer hover:text-slate-600" />
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={10} className="py-8 text-center text-slate-400 text-xs">
+                        No report data found. Click <span className="text-indigo-600 font-bold">Generate Report</span> to load records.
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -287,7 +326,7 @@ export default function ReportsPage() {
                 <button
                   onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
-                  className="px-2.5 py-1 border rounded hover:bg-slate-50 disabled:opacity-50"
+                  className="px-2.5 py-1 border rounded hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
@@ -295,7 +334,7 @@ export default function ReportsPage() {
                   <button
                     key={num}
                     onClick={() => setCurrentPage(num)}
-                    className={`px-3 py-1 border rounded font-semibold ${
+                    className={`px-3 py-1 border rounded font-semibold cursor-pointer ${
                       currentPage === num ? "bg-indigo-600 text-white border-indigo-600" : "hover:bg-slate-50 text-slate-700"
                     }`}
                   >
@@ -304,8 +343,8 @@ export default function ReportsPage() {
                 ))}
                 <button
                   onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  className="px-2.5 py-1 border rounded hover:bg-slate-50 disabled:opacity-50"
+                  disabled={currentPage === totalPages || totalPages === 0}
+                  className="px-2.5 py-1 border rounded hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
@@ -328,7 +367,7 @@ export default function ReportsPage() {
               <div>
                 <label className="text-slate-500 block mb-1">Date Range</label>
                 <select className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700">
-                  <option>01 Aug 2026 - 24 Aug 2026</option>
+                  <option>{dynamicDates.rangeString}</option>
                 </select>
               </div>
               <div>
@@ -361,46 +400,46 @@ export default function ReportsPage() {
               </div>
               <button
                 onClick={() => alert("Report generated successfully!")}
-                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-sm transition"
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-sm transition cursor-pointer"
               >
                 Generate Report
               </button>
             </div>
           </div>
 
-          {/* Quick Reports with Department & Absentee Report Cards */}
+          {/* Quick Reports */}
           <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-3">
             <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">Quick Reports</h3>
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <button onClick={() => alert("Daily Attendance Generated")} className="p-2.5 bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100 rounded-lg text-left font-semibold text-indigo-700 transition">
+              <button onClick={() => alert("Daily Attendance Generated")} className="p-2.5 bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100 rounded-lg text-left font-semibold text-indigo-700 transition cursor-pointer">
                 📅 Daily Attendance
               </button>
-              <button onClick={() => alert("Employee Summary Generated")} className="p-2.5 bg-blue-50/50 hover:bg-blue-50 border border-blue-100 rounded-lg text-left font-semibold text-blue-700 transition">
+              <button onClick={() => alert("Employee Summary Generated")} className="p-2.5 bg-blue-50/50 hover:bg-blue-50 border border-blue-100 rounded-lg text-left font-semibold text-blue-700 transition cursor-pointer">
                 👥 Employee Summary
               </button>
-              <button onClick={() => alert("Zone-wise Report Generated")} className="p-2.5 bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-100 rounded-lg text-left font-semibold text-emerald-700 transition">
+              <button onClick={() => alert("Zone-wise Report Generated")} className="p-2.5 bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-100 rounded-lg text-left font-semibold text-emerald-700 transition cursor-pointer">
                 🏢 Zone-wise Report
               </button>
-              <button onClick={() => alert("Late Arrivals Generated")} className="p-2.5 bg-rose-50/50 hover:bg-rose-50 border border-rose-100 rounded-lg text-left font-semibold text-rose-700 transition">
+              <button onClick={() => alert("Late Arrivals Generated")} className="p-2.5 bg-rose-50/50 hover:bg-rose-50 border border-rose-100 rounded-lg text-left font-semibold text-rose-700 transition cursor-pointer">
                 ⏰ Late Arrivals
               </button>
-              <button onClick={() => alert("Department Report Generated")} className="p-2.5 bg-purple-50/50 hover:bg-purple-50 border border-purple-100 rounded-lg text-left font-semibold text-purple-700 transition">
+              <button onClick={() => alert("Department Report Generated")} className="p-2.5 bg-purple-50/50 hover:bg-purple-50 border border-purple-100 rounded-lg text-left font-semibold text-purple-700 transition cursor-pointer">
                 📊 Department Report
               </button>
-              <button onClick={() => alert("Absentee Report Generated")} className="p-2.5 bg-amber-50/50 hover:bg-amber-50 border border-amber-100 rounded-lg text-left font-semibold text-amber-700 transition">
+              <button onClick={() => alert("Absentee Report Generated")} className="p-2.5 bg-amber-50/50 hover:bg-amber-50 border border-amber-100 rounded-lg text-left font-semibold text-amber-700 transition cursor-pointer">
                 ⚠️ Absentee Report
               </button>
             </div>
           </div>
 
-          {/* Scheduled Reports with Add Schedule Button */}
+          {/* Scheduled Reports */}
           <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h3 className="text-sm font-bold text-slate-900">Scheduled Reports</h3>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => alert("Open Add Schedule Modal")}
-                  className="flex items-center gap-1 text-xs text-indigo-600 font-bold hover:underline"
+                  className="flex items-center gap-1 text-xs text-indigo-600 font-bold hover:underline cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add Schedule
                 </button>

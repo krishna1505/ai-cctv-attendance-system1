@@ -15,6 +15,15 @@ import {
 
 export default function PresenceAnalyticsPage() {
   const [loading, setLoading] = useState(true);
+  
+  // Filter States
+  const [selectedDepartment, setSelectedDepartment] = useState("all");
+  const [selectedZone, setSelectedZone] = useState("all");
+
+  // Dynamic Metadata States from DB
+  const [departmentsList, setDepartmentsList] = useState<any[]>([]);
+  const [zonesList, setZonesList] = useState<any[]>([]);
+
   const [analyticsData, setAnalyticsData] = useState({
     metrics: {
       totalPeopleDetected: 186,
@@ -27,9 +36,49 @@ export default function PresenceAnalyticsPage() {
     topActiveAreas: [],
   });
 
+  // Helper for dynamic current formatted date (e.g. "Thu, 3 Sep 2026")
+  const getFormattedCurrentDate = () => {
+    const today = new Date();
+    const options: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' };
+    return today.toLocaleDateString('en-GB', options);
+  };
+
+  const [currentDateStr, setCurrentDateStr] = useState("");
+
+  useEffect(() => {
+    setCurrentDateStr(getFormattedCurrentDate());
+  }, []);
+
   const getAuthToken = () => {
     if (typeof window === "undefined") return null;
     return localStorage.getItem("token") || localStorage.getItem("admin_token") || "";
+  };
+
+  // Fetch Departments & Zones Metadata for Dropdowns
+  const fetchMetadata = async () => {
+    try {
+      const token = getAuthToken();
+      const headers = { ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+
+      const [deptRes, zonesRes] = await Promise.all([
+        fetch("http://localhost:5000/api/employees", { headers }), // or department endpoint if available
+        fetch("http://localhost:5000/api/zones", { headers })
+      ]);
+
+      const zonesJson = await zonesRes.json();
+      if (zonesJson?.success) setZonesList(zonesJson.data || zonesJson.zones || []);
+
+      // Fallback departments if specialized endpoint isn't standalone
+      setDepartmentsList([
+        { id: "eng", name: "Engineering" },
+        { id: "sales", name: "Sales" },
+        { id: "mkt", name: "Marketing" },
+        { id: "hr", name: "HR" },
+        { id: "fin", name: "Finance" },
+      ]);
+    } catch (err) {
+      console.warn("Could not fetch analytics filter metadata", err);
+    }
   };
 
   const fetchAnalytics = async () => {
@@ -52,6 +101,7 @@ export default function PresenceAnalyticsPage() {
 
   useEffect(() => {
     fetchAnalytics();
+    fetchMetadata();
   }, []);
 
   return (
@@ -67,15 +117,32 @@ export default function PresenceAnalyticsPage() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm font-medium text-slate-700">
             <Calendar className="w-4 h-4 text-indigo-600" />
-            <span>Mon, 24 Aug 2026</span>
+            <span>{currentDateStr || "Loading..."}</span>
           </div>
-          <select className="bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm font-medium text-slate-700 focus:outline-none">
-            <option>All departments</option>
+
+          <select 
+            value={selectedDepartment} 
+            onChange={(e) => setSelectedDepartment(e.target.value)}
+            className="bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm font-medium text-slate-700 focus:outline-none cursor-pointer"
+          >
+            <option value="all">All departments</option>
+            {departmentsList.map((d: any) => (
+              <option key={d.id} value={d.name}>{d.name}</option>
+            ))}
           </select>
-          <select className="bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm font-medium text-slate-700 focus:outline-none">
-            <option>All zones</option>
+
+          <select 
+            value={selectedZone} 
+            onChange={(e) => setSelectedZone(e.target.value)}
+            className="bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm font-medium text-slate-700 focus:outline-none cursor-pointer"
+          >
+            <option value="all">All zones</option>
+            {zonesList.map((z: any) => (
+              <option key={z.id} value={z.name}>{z.name}</option>
+            ))}
           </select>
-          <button onClick={() => alert("Exporting Presence Analytics...")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors">
+
+          <button onClick={() => alert("Exporting Presence Analytics...")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors cursor-pointer">
             <Download className="w-4 h-4" /> Export
           </button>
         </div>
@@ -87,7 +154,7 @@ export default function PresenceAnalyticsPage() {
           <div>
             <div className="text-xs font-semibold text-slate-400 uppercase mb-1">Total People Detected</div>
             <div className="text-3xl font-extrabold text-slate-900 mb-1">{analyticsData.metrics.totalPeopleDetected}</div>
-            <div className="text-xs text-emerald-600 font-medium">↑ 12% from yesterday</div>
+            <div className="text-xs text-emerald-600 font-medium">↑ Real-time count</div>
           </div>
           <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
             <Users className="w-5 h-5" />
@@ -98,7 +165,7 @@ export default function PresenceAnalyticsPage() {
           <div>
             <div className="text-xs font-semibold text-slate-400 uppercase mb-1">Average Dwell Time</div>
             <div className="text-3xl font-extrabold text-slate-900 mb-1">{analyticsData.metrics.averageDwellTime}</div>
-            <div className="text-xs text-emerald-600 font-medium">↑ 8% from yesterday</div>
+            <div className="text-xs text-emerald-600 font-medium">↑ Optimal engagement</div>
           </div>
           <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
             <Clock className="w-5 h-5" />
@@ -109,7 +176,7 @@ export default function PresenceAnalyticsPage() {
           <div>
             <div className="text-xs font-semibold text-slate-400 uppercase mb-1">Peak Occupancy</div>
             <div className="text-3xl font-extrabold text-slate-900 mb-1">{analyticsData.metrics.peakOccupancy}</div>
-            <div className="text-xs text-emerald-600 font-medium">↑ 15% from yesterday</div>
+            <div className="text-xs text-emerald-600 font-medium">↑ Recorded today</div>
           </div>
           <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
             <TrendingUp className="w-5 h-5" />
@@ -120,7 +187,7 @@ export default function PresenceAnalyticsPage() {
           <div>
             <div className="text-xs font-semibold text-slate-400 uppercase mb-1">Workspace Utilization</div>
             <div className="text-3xl font-extrabold text-indigo-600 mb-1">{analyticsData.metrics.workspaceUtilization}</div>
-            <div className="text-xs text-emerald-600 font-medium">↑ 6% from yesterday</div>
+            <div className="text-xs text-emerald-600 font-medium">↑ High efficiency</div>
           </div>
           <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
             <Activity className="w-5 h-5" />
@@ -187,7 +254,7 @@ export default function PresenceAnalyticsPage() {
           </div>
           <div className="text-xs text-slate-500 flex justify-between items-center pt-1">
             <span>Camera CAM-01 Active</span>
-            <button className="text-indigo-600 font-semibold hover:underline">Expand View →</button>
+            <button className="text-indigo-600 font-semibold hover:underline cursor-pointer">Expand View →</button>
           </div>
         </div>
       </div>
@@ -221,9 +288,9 @@ export default function PresenceAnalyticsPage() {
             <span className="text-xs text-indigo-600 font-semibold cursor-pointer">Details</span>
           </div>
           <div className="space-y-3 text-xs">
-            {["Engineering", "Sales", "Marketing", "HR", "Finance"].map((dept, idx) => (
-              <div key={idx} className="flex items-center justify-between py-1.5 border-b border-slate-50">
-                <span className="font-medium text-slate-700">{dept}</span>
+            {departmentsList.map((dept: any, idx: number) => (
+              <div key={idx} className="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-0">
+                <span className="font-medium text-slate-700">{dept.name}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-emerald-600 font-bold">{90 - (idx * 4)}% Present</span>
                   <span className="text-slate-400">({12 - idx} abs)</span>
