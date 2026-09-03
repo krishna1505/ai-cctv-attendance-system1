@@ -593,7 +593,10 @@ const getCompanyDashboardAnalytics = async (req, res) => {
       targetDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
     }
 
-    const [totalEmployees, dailyRecords, activeCameras, analyticsAgg] = await Promise.all([
+    const sevenDaysAgo = new Date(targetDate);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+
+    const [totalEmployees, dailyRecords, activeCameras, analyticsAgg, weekRecords] = await Promise.all([
       prisma.employee.count({ where: { companyId, status: "ACTIVE" } }),
       prisma.dailyAttendance.findMany({
         where: { companyId, attendanceDate: targetDate },
@@ -602,6 +605,13 @@ const getCompanyDashboardAnalytics = async (req, res) => {
       prisma.employeeDailyAnalytics.findMany({
         where: { companyId, date: targetDate },
       }),
+      prisma.dailyAttendance.findMany({
+        where: { 
+          companyId, 
+          attendanceDate: { gte: sevenDaysAgo, lte: targetDate } 
+        },
+        select: { attendanceDate: true, status: true }
+      })
     ]);
 
     let presentCount = 0;
@@ -638,6 +648,32 @@ const getCompanyDashboardAnalytics = async (req, res) => {
 
     const count = analyticsAgg.length || 1;
 
+    // Calculate 7-day trend
+    const trendMap = {};
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sevenDaysAgo);
+      d.setDate(d.getDate() + i);
+      const dayLabel = `${d.getDate()} ${d.toLocaleString('default', { month: 'short' })}`;
+      trendMap[d.toISOString().split('T')[0]] = { day: dayLabel, present: 0, late: 0, absent: 0 };
+    }
+
+    weekRecords.forEach(r => {
+      const dateKey = r.attendanceDate.toISOString().split('T')[0];
+      if (trendMap[dateKey]) {
+        if (r.status === "PRESENT") trendMap[dateKey].present++;
+        if (r.status === "LATE") {
+           trendMap[dateKey].present++; 
+           trendMap[dateKey].late++;
+        }
+      }
+    });
+
+    Object.values(trendMap).forEach(day => {
+       day.absent = Math.max(0, totalEmployees - day.present);
+    });
+
+    const attendanceTrend = Object.values(trendMap);
+
     return res.status(200).json({
       success: true,
       data: {
@@ -649,6 +685,7 @@ const getCompanyDashboardAnalytics = async (req, res) => {
         currentlyInside,
         checkedOut,
         activeCameras,
+        attendanceTrend,
         averages: {
           avgPresenceHours: (totalPresenceMin / count / 60).toFixed(1),
           avgDeskHours: (totalDeskMin / count / 60).toFixed(1),
