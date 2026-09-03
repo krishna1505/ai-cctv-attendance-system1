@@ -16,6 +16,7 @@ import {
   Settings,
   HelpCircle,
   ChevronRight,
+  LogOut,
 } from "lucide-react";
 
 interface NavItem {
@@ -108,7 +109,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Bottom Help Widget & Version */}
-      <div className="p-4 border-t border-slate-100">
+      <div className="p-4 border-t border-slate-100 space-y-2">
         <div className="p-3 bg-violet-50/70 border border-violet-100 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-violet-100/60 transition">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-xl bg-violet-200/80 flex items-center justify-center text-violet-700">
@@ -121,6 +122,19 @@ export default function Sidebar() {
           </div>
           <ChevronRight size={14} className="text-slate-400" />
         </div>
+        
+        <button 
+          onClick={() => {
+            localStorage.removeItem("staffpie_token");
+            localStorage.removeItem("staffpie_user");
+            localStorage.removeItem("staffpie_companyId");
+            window.location.href = "/login";
+          }}
+          className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold text-red-500 hover:bg-red-50 hover:text-red-600 rounded-xl transition"
+        >
+          <LogOut size={14} /> Sign Out
+        </button>
+
         <p className="text-[10px] text-slate-400 text-center mt-3 font-medium">v1.0.0 • © 2026 Staffpie</p>
       </div>
     </aside>

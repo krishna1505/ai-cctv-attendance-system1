@@ -6,47 +6,52 @@ datasource db {
   provider = "postgresql"
 }
 
+// ==========================================
+// 1. Company & Admin Models
+// ==========================================
 model Company {
-  id                  String                   @id @default(uuid())
+  id                  String       @id @default(uuid())
   name                String
-  code                String                   @unique
-  timezone            String                   @default("Asia/Kolkata")
+  code                String       @unique
+  timezone            String       @default("Asia/Kolkata")
   address             String?
-  status              Status                   @default(ACTIVE)
-  createdAt           DateTime                 @default(now()) @map("created_at")
-  confidenceThreshold Float                    @default(0.85) @map("confidence_threshold")
-  eventRetentionDays  Int                      @default(15) @map("event_retention_days")
-  adminUsers          AdminUser[]
-  aiEvents            AIEvent[]
-  attendanceEvents    AttendanceEvent[]
-  rawLogs             AttendanceRawLog[]
-  auditLogs           AuditLog[]
-  cameras             Camera[]
-  dailyAttendance     DailyAttendance[]
-  departments         Department[]
-  dailyAnalytics      EmployeeDailyAnalytics[]
-  employees           Employee[]
-  hrmsIntegration     HRMSIntegration?
-  syncQueues          HrmsSyncQueue[]
-  presenceSessions    PresenceSession[]
-  shiftSnapshots      ShiftSnapshot[]
-  syncLogs            SyncLog[]
-  zones               Zone[]
+  status              Status       @default(ACTIVE)
+  confidenceThreshold Float        @default(0.85) @map("confidence_threshold")
+  eventRetentionDays  Int          @default(15) @map("event_retention_days")
+  createdAt           DateTime     @default(now()) @map("created_at")
+
+  adminUsers         AdminUser[]
+  departments        Department[]
+  employees          Employee[]
+  shiftSnapshots     ShiftSnapshot[]
+  cameras            Camera[]
+  zones              Zone[]
+  rawLogs            AttendanceRawLog[]
+  dailyAttendance    DailyAttendance[]
+  syncQueues         HrmsSyncQueue[]
+  presenceSessions   PresenceSession[]
+  dailyAnalytics     EmployeeDailyAnalytics[]
+  attendanceEvents   AttendanceEvent[]
+  auditLogs          AuditLog[]
+  syncLogs           SyncLog[]
+  aiEvents           AIEvent[]
+  hrmsIntegration    HRMSIntegration?
 
   @@map("companies")
 }
 
 model AdminUser {
-  id           String     @id @default(uuid())
-  companyId    String     @map("company_id")
-  email        String     @unique
-  passwordHash String     @map("password_hash")
-  role         Role       @default(COMPANY_ADMIN)
-  status       Status     @default(ACTIVE)
-  lastLogin    DateTime?  @map("last_login")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  auditLogs    AuditLog[]
+  id           String    @id @default(uuid())
+  companyId    String    @map("company_id")
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         Role      @default(COMPANY_ADMIN)
+  status       Status    @default(ACTIVE)
+  lastLogin    DateTime? @map("last_login")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  auditLogs AuditLog[]
 
   @@map("admin_users")
 }
@@ -61,64 +66,70 @@ model TokenBlacklist {
   @@map("token_blacklist")
 }
 
+// ==========================================
+// 2. Department, Shift & Employee
+// ==========================================
 model Department {
-  id               String     @id @default(uuid())
-  companyId        String     @map("company_id")
-  hrmsDepartmentId String?    @map("hrms_department_id")
+  id               String   @id @default(uuid())
+  companyId        String   @map("company_id")
+  hrmsDepartmentId String?  @map("hrms_department_id")
   name             String
-  status           Status     @default(ACTIVE)
-  createdAt        DateTime   @default(now()) @map("created_at")
-  company          Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employees        Employee[]
+  status           Status   @default(ACTIVE)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees Employee[]
 
   @@unique([companyId, name])
   @@map("departments")
 }
 
 model ShiftSnapshot {
-  id          String     @id @default(uuid())
-  companyId   String     @map("company_id")
-  hrmsShiftId String     @map("hrms_shift_id")
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  hrmsShiftId String   @map("hrms_shift_id")
   name        String
-  startTime   String     @map("start_time")
-  endTime     String     @map("end_time")
-  gracePeriod Int        @default(15) @map("grace_period_mins")
-  createdAt   DateTime   @default(now()) @map("created_at")
-  employees   Employee[]
-  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  startTime   String   @map("start_time")
+  endTime     String   @map("end_time")
+  gracePeriod Int      @default(15) @map("grace_period_mins")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees Employee[]
 
   @@unique([companyId, hrmsShiftId])
   @@map("shift_snapshots")
 }
 
 model Employee {
-  id                   String                   @id @default(uuid())
-  companyId            String                   @map("company_id")
-  hrmsEmployeeId       String                   @map("hrms_employee_id")
-  employeeCode         String                   @map("employee_code")
+  id                   String       @id @default(uuid())
+  companyId            String       @map("company_id")
+  hrmsEmployeeId       String       @map("hrms_employee_id")
+  employeeCode         String       @map("employee_code")
   name                 String
-  departmentId         String?                  @map("department_id")
-  shiftSnapshotId      String?                  @map("shift_snapshot_id")
-  designation          String?
-  faceProfileRef       String?                  @map("face_profile_ref")
-  status               Status                   @default(ACTIVE)
-  lastSyncedAt         DateTime?                @map("last_synced_at")
-  createdAt            DateTime                 @default(now()) @map("created_at")
   email                String?
   mobile               String?
-  aiEvents             AIEvent[]
-  attendanceEvents     AttendanceEvent[]
-  rawLogs              AttendanceRawLog[]
-  breakSessions        BreakSession[]
-  dailyAttendance      DailyAttendance[]
-  dailyAnalytics       EmployeeDailyAnalytics[]
-  company              Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  department           Department?              @relation(fields: [departmentId], references: [id])
-  shiftSnapshot        ShiftSnapshot?           @relation(fields: [shiftSnapshotId], references: [id])
+  departmentId         String?      @map("department_id")
+  shiftSnapshotId      String?      @map("shift_snapshot_id")
+  designation          String?
+  faceProfileRef       String?      @map("face_profile_ref")
+  status               Status       @default(ACTIVE)
+  lastSyncedAt         DateTime?    @map("last_synced_at")
+  createdAt            DateTime     @default(now()) @map("created_at")
+
+  company              Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  department           Department?           @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  shiftSnapshot        ShiftSnapshot?        @relation(fields: [shiftSnapshotId], references: [id], onDelete: SetNull)
   faceProfileReference FaceProfileReference?
-  meetingSessions      MeetingSession[]
+  rawLogs              AttendanceRawLog[]
+  dailyAttendance      DailyAttendance[]
   presenceSessions     PresenceSession[]
   zoneSessions         ZoneSession[]
+  breakSessions        BreakSession[]
+  meetingSessions      MeetingSession[]
+  dailyAnalytics       EmployeeDailyAnalytics[]
+  attendanceEvents     AttendanceEvent[]
+  aiEvents             AIEvent[]
 
   @@unique([companyId, hrmsEmployeeId])
   @@unique([companyId, employeeCode])
@@ -133,44 +144,50 @@ model FaceProfileReference {
   status            Status    @default(ACTIVE)
   syncedAt          DateTime? @default(now()) @map("synced_at")
   createdAt         DateTime  @default(now()) @map("created_at")
-  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@map("face_profile_references")
 }
 
+// ==========================================
+// 3. Zone & Camera Management
+// ==========================================
 model Zone {
-  id               String            @id @default(uuid())
-  companyId        String            @map("company_id")
-  name             String
-  type             ZoneType          @default(OFFICE)
-  coordinatesJson  String?           @map("coordinates_json")
-  status           Status            @default(ACTIVE)
-  createdAt        DateTime          @default(now()) @map("created_at")
-  attendanceEvents AttendanceEvent[]
-  breakSessions    BreakSession[]
-  cameraZones      CameraZone[]
-  meetingSessions  MeetingSession[]
-  zoneSessions     ZoneSession[]
+  id              String    @id @default(uuid())
+  companyId       String    @map("company_id")
+  name            String
+  type            ZoneType  @default(OFFICE)
+  coordinatesJson String?   @map("coordinates_json")
+  status          Status    @default(ACTIVE)
+  createdAt       DateTime  @default(now()) @map("created_at")
+
   company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cameraZones      CameraZone[]
+  zoneSessions     ZoneSession[]
+  breakSessions    BreakSession[]
+  meetingSessions  MeetingSession[]
+  attendanceEvents AttendanceEvent[]
 
   @@map("zones")
 }
 
 model Camera {
-  id                   String             @id @default(uuid())
-  companyId            String             @map("company_id")
+  id                   String       @id @default(uuid())
+  companyId            String       @map("company_id")
   name                 String
   location             String?
-  rtspUrl              String             @map("rtsp_url")
-  status               CameraStatus       @default(ACTIVE)
-  lastPingAt           DateTime?          @map("last_ping_at")
-  createdAt            DateTime           @default(now()) @map("created_at")
-  credentialsEncrypted String?            @map("credentials_encrypted")
-  aiEvents             AIEvent[]
-  attendanceEvents     AttendanceEvent[]
-  rawLogs              AttendanceRawLog[]
-  cameraZones          CameraZone[]
-  company              Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  rtspUrl              String       @map("rtsp_url")
+  credentialsEncrypted String?      @map("credentials_encrypted")
+  status               CameraStatus @default(ACTIVE)
+  lastPingAt           DateTime?    @map("last_ping_at")
+  createdAt            DateTime     @default(now()) @map("created_at")
+
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cameraZones      CameraZone[]
+  rawLogs          AttendanceRawLog[]
+  attendanceEvents AttendanceEvent[]
+  aiEvents         AIEvent[]
 
   @@map("cameras")
 }
@@ -180,27 +197,32 @@ model CameraZone {
   cameraId  String   @map("camera_id")
   zoneId    String   @map("zone_id")
   createdAt DateTime @default(now()) @map("created_at")
-  camera    Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
-  zone      Zone     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  camera Camera @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  zone   Zone   @relation(fields: [zoneId], references: [id], onDelete: Cascade)
 
   @@unique([cameraId, zoneId])
   @@map("camera_zones")
 }
 
+// ==========================================
+// 4. Raw Logs, Attendance & Sync Queue
+// ==========================================
 model AttendanceRawLog {
-  id              String          @id @default(uuid())
-  companyId       String          @map("company_id")
-  employeeId      String          @map("employee_id")
-  cameraId        String          @map("camera_id")
-  punchTimestamp  DateTime        @default(now()) @map("punch_timestamp")
-  confidenceScore Float?          @map("confidence_score")
-  snapshotUrl     String?         @map("snapshot_url")
-  syncStatus      SyncStatus      @default(PENDING) @map("sync_status")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  camera          Camera          @relation(fields: [cameraId], references: [id], onDelete: Cascade)
-  company         Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee        Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  syncQueues      HrmsSyncQueue[]
+  id              String      @id @default(uuid())
+  companyId       String      @map("company_id")
+  employeeId      String      @map("employee_id")
+  cameraId        String      @map("camera_id")
+  punchTimestamp  DateTime    @default(now()) @map("punch_timestamp")
+  confidenceScore Float?      @map("confidence_score")
+  snapshotUrl     String?     @map("snapshot_url")
+  syncStatus      SyncStatus  @default(PENDING) @map("sync_status")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  company    Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee   Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  camera     Camera           @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  syncQueues HrmsSyncQueue[]
 
   @@index([companyId, punchTimestamp])
   @@index([employeeId, punchTimestamp])
@@ -220,8 +242,9 @@ model DailyAttendance {
   earlyExitMinutes Int              @default(0) @map("early_exit_minutes")
   createdAt        DateTime         @default(now()) @map("created_at")
   updatedAt        DateTime         @updatedAt @map("updated_at")
-  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee         Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, employeeId, attendanceDate])
   @@index([companyId, attendanceDate])
@@ -229,19 +252,20 @@ model DailyAttendance {
 }
 
 model HrmsSyncQueue {
-  id          String           @id @default(uuid())
-  companyId   String           @map("company_id")
-  rawLogId    String           @map("raw_log_id")
+  id          String      @id @default(uuid())
+  companyId   String      @map("company_id")
+  rawLogId    String      @map("raw_log_id")
   payload     Json
-  attempts    Int              @default(0)
-  maxAttempts Int              @default(5) @map("max_attempts")
-  status      QueueStatus      @default(PENDING)
-  lastError   String?          @map("last_error")
-  nextRetryAt DateTime         @default(now()) @map("next_retry_at")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  rawLog      AttendanceRawLog @relation(fields: [rawLogId], references: [id], onDelete: Cascade)
+  attempts    Int         @default(0)
+  maxAttempts Int         @default(5) @map("max_attempts")
+  status      QueueStatus @default(PENDING)
+  lastError   String?     @map("last_error")
+  nextRetryAt DateTime    @default(now()) @map("next_retry_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  company Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  rawLog  AttendanceRawLog @relation(fields: [rawLogId], references: [id], onDelete: Cascade)
 
   @@index([companyId, status])
   @@index([status, nextRetryAt])
@@ -262,16 +286,20 @@ model AttendanceEvent {
   retryCount      Int                 @default(0) @map("retry_count")
   lastSyncError   String?             @map("last_sync_error")
   createdAt       DateTime            @default(now()) @map("created_at")
-  camera          Camera              @relation(fields: [cameraId], references: [id], onDelete: Cascade)
-  company         Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee        Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  zone            Zone?               @relation(fields: [zoneId], references: [id])
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  camera   Camera    @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  zone     Zone?     @relation(fields: [zoneId], references: [id], onDelete: SetNull)
 
   @@index([companyId, eventTimestamp])
   @@index([employeeId, eventTimestamp])
   @@map("attendance_events")
 }
 
+// ==========================================
+// 5. Presence & Workforce Analytics
+// ==========================================
 model PresenceSession {
   id               String   @id @default(uuid())
   companyId        String   @map("company_id")
@@ -280,8 +308,9 @@ model PresenceSession {
   lastSeen         DateTime @map("last_seen")
   totalPresenceMin Int      @default(0) @map("total_presence_min")
   date             DateTime @map("date")
-  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@map("presence_sessions")
 }
@@ -294,8 +323,9 @@ model ZoneSession {
   entryTime   DateTime  @map("entry_time")
   exitTime    DateTime? @map("exit_time")
   durationMin Int       @default(0) @map("duration_min")
-  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  zone        Zone      @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  zone     Zone     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
 
   @@map("zone_sessions")
 }
@@ -307,8 +337,9 @@ model BreakSession {
   startTime   DateTime  @map("start_time")
   endTime     DateTime? @map("end_time")
   durationMin Int       @default(0) @map("duration_min")
-  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  zone        Zone      @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  zone     Zone     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
 
   @@map("break_sessions")
 }
@@ -320,8 +351,9 @@ model MeetingSession {
   startTime   DateTime  @map("start_time")
   endTime     DateTime? @map("end_time")
   durationMin Int       @default(0) @map("duration_min")
-  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  zone        Zone      @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  zone     Zone     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
 
   @@map("meeting_sessions")
 }
@@ -338,25 +370,30 @@ model EmployeeDailyAnalytics {
   awayMin           Int       @default(0) @map("away_min")
   firstSeen         DateTime? @map("first_seen")
   lastSeen          DateTime? @map("last_seen")
-  company           Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, employeeId, date])
   @@map("employee_daily_analytics")
 }
 
+// ==========================================
+// 6. Audit & HRMS Integration Logs
+// ==========================================
 model AuditLog {
-  id          String     @id @default(uuid())
-  companyId   String     @map("company_id")
-  action      String     @default("SYSTEM_ACTION")
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  adminUserId String?  @map("admin_user_id")
+  action      String   @default("SYSTEM_ACTION")
+  entityType  String   @default("SYSTEM") @map("entity_type")
+  entityId    String?  @map("entity_id")
+  ipAddress   String?  @map("ip_address")
   details     Json?
-  ipAddress   String?    @map("ip_address")
-  createdAt   DateTime   @default(now()) @map("created_at")
-  adminUserId String?    @map("admin_user_id")
-  entityId    String?    @map("entity_id")
-  entityType  String     @default("SYSTEM") @map("entity_type")
-  adminUser   AdminUser? @relation(fields: [adminUserId], references: [id])
-  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  adminUser AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
 
   @@index([companyId, createdAt])
   @@map("audit_logs")
@@ -371,28 +408,33 @@ model HRMSIntegration {
   status             String    @default("ACTIVE")
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
-  company            Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  syncLogs           SyncLog[]
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  syncLogs SyncLog[]
 
   @@map("hrms_integrations")
 }
 
 model SyncLog {
-  id            String           @id @default(uuid())
-  companyId     String           @map("company_id")
-  status        SyncStatus       @default(PENDING)
-  recordsSynced Int              @default(0) @map("records_synced")
-  errorMessage  String?          @map("error_message")
-  integrationId String?          @map("integration_id")
-  syncType      String           @default("EMPLOYEES") @map("sync_type")
-  createdAt     DateTime         @default(now()) @map("created_at")
-  company       Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  integration   HRMSIntegration? @relation(fields: [integrationId], references: [id])
+  id            String     @id @default(uuid())
+  companyId     String     @map("company_id")
+  integrationId String?    @map("integration_id")
+  syncType      String     @default("EMPLOYEES") @map("sync_type")
+  status        SyncStatus @default(PENDING)
+  recordsSynced Int        @default(0) @map("records_synced")
+  errorMessage  String?    @map("error_message")
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  integration HRMSIntegration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
 
   @@index([companyId, createdAt])
   @@map("sync_logs")
 }
 
+// ==========================================
+// 7. Generic AI Event Pipeline
+// ==========================================
 model AIEvent {
   id              String      @id @default(uuid())
   companyId       String      @map("company_id")
@@ -404,9 +446,10 @@ model AIEvent {
   metadata        Json?
   snapshotUrl     String?     @map("snapshot_url")
   createdAt       DateTime    @default(now()) @map("created_at")
-  camera          Camera?     @relation(fields: [cameraId], references: [id])
-  company         Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee        Employee?   @relation(fields: [employeeId], references: [id])
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  camera   Camera?   @relation(fields: [cameraId], references: [id], onDelete: SetNull)
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
 
   @@index([companyId, createdAt])
   @@index([companyId, eventType])
@@ -414,6 +457,9 @@ model AIEvent {
   @@map("ai_events")
 }
 
+// ==========================================
+// Enums
+// ==========================================
 enum Role {
   COMPANY_ADMIN
 }

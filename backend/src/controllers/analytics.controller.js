@@ -248,22 +248,43 @@ const getCompanyDashboardAnalytics = async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized company scope" });
     }
 
-    const today = new Date();
-    const startOfToday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const { date } = req.query;
 
-    const [totalEmployees, dailyRecords, activeCameras, analyticsAgg, employees] = await Promise.all([
+    let targetDate;
+    if (date) {
+      targetDate = new Date(`${date}T00:00:00.000Z`);
+      if (isNaN(targetDate.getTime())) {
+        const today = new Date();
+        targetDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+      }
+    } else {
+      const today = new Date();
+      targetDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    }
+
+    const sevenDaysAgo = new Date(targetDate);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+
+    const [totalEmployees, dailyRecords, activeCameras, analyticsAgg, employees, weekRecords] = await Promise.all([
       prisma.employee.count({ where: { companyId, status: "ACTIVE" } }),
       prisma.dailyAttendance.findMany({
-        where: { companyId, attendanceDate: startOfToday },
+        where: { companyId, attendanceDate: targetDate },
       }),
       prisma.camera.count({ where: { companyId, status: "ACTIVE" } }),
       prisma.employeeDailyAnalytics.findMany({
-        where: { companyId, date: startOfToday },
+        where: { companyId, date: targetDate },
       }),
       prisma.employee.findMany({
         where: { companyId, status: "ACTIVE" },
         include: { department: true },
       }),
+      prisma.dailyAttendance.findMany({
+        where: { 
+          companyId, 
+          attendanceDate: { gte: sevenDaysAgo, lte: targetDate } 
+        },
+        select: { attendanceDate: true, status: true }
+      })
     ]);
 
     let totalPresenceMin = 0;
@@ -314,6 +335,32 @@ const getCompanyDashboardAnalytics = async (req, res) => {
       };
     });
 
+    // Calculate 7-day trend
+    const trendMap = {};
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sevenDaysAgo);
+      d.setDate(d.getDate() + i);
+      const dayLabel = `${d.getDate()} ${d.toLocaleString('default', { month: 'short' })}`;
+      trendMap[d.toISOString().split('T')[0]] = { day: dayLabel, present: 0, late: 0, absent: 0 };
+    }
+
+    weekRecords.forEach(r => {
+      const dateKey = r.attendanceDate.toISOString().split('T')[0];
+      if (trendMap[dateKey]) {
+        if (r.status === "PRESENT") trendMap[dateKey].present++;
+        if (r.status === "LATE") {
+           trendMap[dateKey].present++; 
+           trendMap[dateKey].late++;
+        }
+      }
+    });
+
+    Object.values(trendMap).forEach(day => {
+       day.absent = Math.max(0, totalEmployees - day.present);
+    });
+
+    const attendanceTrend = Object.values(trendMap);
+
     return res.status(200).json({
       success: true,
       data: {
@@ -324,6 +371,15 @@ const getCompanyDashboardAnalytics = async (req, res) => {
         employeeStats,
         totalEmployees,
         activeCameras,
+        attendanceTrend,
+        averages: {
+          avgPresenceHours: (totalPresenceMin / count / 60).toFixed(1),
+          avgDeskHours: (totalDeskMin / count / 60).toFixed(1),
+          avgBreakMinutes: Math.round(totalBreakMin / count),
+          avgMeetingMinutes: Math.round(totalMeetingMin / count),
+        },
+        disclaimer:
+          "Camera-based desk presence measures area visibility only and does not reflect work productivity.",
       },
     });
   } catch (error) {
